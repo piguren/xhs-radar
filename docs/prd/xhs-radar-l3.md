@@ -1,6 +1,6 @@
 # xhs-radar 赛道爆款雷达 — L3 Coding PRD
 
-**版本：** v0.2（批次 1–2 已完成 / 4） | **状态：** 撰写中 | **日期：** 2026-05-09
+**版本：** v0.3（批次 1–3 已完成 / 4） | **状态：** 撰写中 | **日期：** 2026-05-09
 **上游：** [`L1 v0.4`](./xhs-radar-l1.md) · [`L2 v0.1`](./xhs-radar-l2.md)
 **目标读者：** Codex / AI 执行引擎 + 研发工程师
 
@@ -12,7 +12,7 @@
 |------|------|------|
 | L1 产品设计大纲 | 全局 | ✅ v0.4 |
 | L2 传统 PRD | 全局 | ✅ v0.1 |
-| L3 Coding PRD（本文档） | 全局 | 🟡 批次 2 / 4 |
+| L3 Coding PRD（本文档） | 全局 | 🟡 批次 3 / 4 |
 | HTML 原型 | 前端 | ⏭ 已跳过 |
 
 ---
@@ -1448,10 +1448,1039 @@ zod 校验通过 → 写入 batch.aiResults.topicSuggestions
 
 ---
 
-## 👉 等你确认后进入批次 3
+---
 
-**批次 3 内容：** 交互逻辑伪代码（含完整链条不允许跳步） + 视觉 Token（十六进制 + px 值） + 边界条件与错误处理 + 验收标准（AC-001 格式） + Phase 2 占位 + Mock 数据。
+# 📦 批次 3：交互逻辑 + 视觉 Token + 边界条件 + 验收标准 + Phase 2 + Mock 数据
+
+## 五、交互逻辑规范（伪代码）
+
+> 所有伪代码使用 TypeScript 风格，链条完整、不允许跳步。涉及 chrome.* 调用一律走 `services/chrome/`。
+
+### 5.1 抓取主流程（核心 P1）
+
+**触发：** 用户在 `<StartScrapeButton>` 点击。
+
+```typescript
+// 入口位置：src/app/components/config/StartScrapeButton.tsx::onClick
+
+async function onStartScrapeClick(): Promise<void> {
+  const cfg = useConfigStore.getState();
+
+  // 1. 前端校验（严格按 §2.1 区块 G 规则）
+  if (cfg.keywords.length === 0) {
+    addToast({ type: 'warning', message: '请至少添加 1 个关键词', durationMs: 3000 });
+    return;
+  }
+  if (!cfg.timeWindow) {
+    addToast({ type: 'warning', message: '请选择时间窗口', durationMs: 3000 });
+    return;
+  }
+
+  // 2. 检查当前批次是否未保存
+  const currentBatch = useBatchStore.getState().current;
+  if (currentBatch && currentBatch.status === 'complete') {
+    const confirmed = await showModal({ kind: 'confirm_start_scrape' });
+    if (!confirmed) return;
+    // 把当前批次推入历史
+    await services.chrome.storage.set(`batch_${currentBatch.batchId}`, currentBatch);
+    useHistoryStore.getState().push(currentBatch);
+  }
+
+  // 3. 检查小红书登录态
+  const isLoggedIn = await services.xhs.loginChecker.check();
+  if (!isLoggedIn) {
+    const action = await showModal({ kind: 'not_logged_in' });
+    if (action === 'goto_login') {
+      await services.chrome.tabs.create({ url: 'https://www.xiaohongshu.com/login' });
+    }
+    return;  // 用户登录后需手动重新点"开始"
+  }
+
+  // 4. 生成新批次 ID + 切换到展示 Tab
+  const batchId = nanoid();
+  useScrapeStore.getState().reset();
+  useScrapeStore.getState().setStatus('validating');
+  useUiStore.getState().setTab('display');
+
+  // 5. 通知 service worker 启动抓取
+  await services.chrome.messaging.send({
+    kind: 'START_SCRAPE',
+    payload: {
+      batchId,
+      keywords: cfg.keywords,
+      timeWindow: cfg.timeWindow,
+      thresholds: { ces: cfg.cesThreshold, likeRatio: cfg.likeRatioThreshold },
+      candidatePoolMax: cfg.candidatePoolMax,
+      targetBombCount: cfg.targetBombCount,
+    },
+  });
+}
+```
+
+**Service Worker 端：**
+
+```typescript
+// src/shell/service_worker.ts
+
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg.kind === 'START_SCRAPE') {
+    handleStartScrape(msg.payload).then(sendResponse);
+    return true;  // 异步响应
+  }
+  // ... 其他消息
+});
+
+async function handleStartScrape(payload: StartScrapePayload): Promise<void> {
+  const sm = scrapeStateMachine;
+  await sm.transition('validating');
+
+  // 1. 打开或复用一个小红书搜索 Tab
+  const xhsTab = await openOrFocusXhsSearchTab(payload.keywords[0]);
+
+  // 2. 在 Tab 中注入拦截器（content script 由 manifest 自动注入，这里只通知开始拦截）
+  await services.chrome.tabs.sendMessage(xhsTab.id, {
+    kind: 'BEGIN_INTERCEPT',
+    batchId: payload.batchId,
+  });
+
+  await sm.transition('scraping');
+  emitProgress({ status: 'scraping', candidateCount: 0, currentKeyword: payload.keywords[0] });
+
+  // 3. 候选池累积循环
+  const pool: NoteRecord[] = [];
+  let kwIndex = 0;
+  let stallCount = 0;  // 连续 N 次滚动无新数据则切下一关键词
+
+  while (
+    pool.length < payload.candidatePoolMax &&
+    kwIndex < payload.keywords.length &&
+    sm.current === 'scraping'
+  ) {
+    const before = pool.length;
+    await services.chrome.tabs.sendMessage(xhsTab.id, { kind: 'SCROLL_ONCE' });
+    await sleep(randomBetween(800, 1500));  // §4.3 风险减负
+
+    // 等待 content script 推送拦截到的新数据（最多等 3s）
+    const newNotes = await waitForInterceptedNotes(payload.batchId, 3000);
+    pool.push(...dedupeByNoteId(pool, newNotes));
+
+    emitProgress({ candidateCount: pool.length });
+
+    if (pool.length === before) {
+      stallCount++;
+      if (stallCount >= 3) {
+        // 切到下一个关键词
+        kwIndex++;
+        if (kwIndex < payload.keywords.length) {
+          await switchSearchKeyword(xhsTab.id, payload.keywords[kwIndex]);
+          stallCount = 0;
+        }
+      }
+    } else {
+      stallCount = 0;
+    }
+
+    // 风控检测
+    const captcha = await services.xhs.captchaDetector.check(xhsTab.id);
+    if (captcha) {
+      await sm.transition('captcha_paused');
+      emitProgress({ status: 'captcha_paused' });
+      await waitForUserCaptchaResolution();  // 弹窗 §5.3 等用户点"我已通过"
+      await sm.transition('scraping');
+    }
+  }
+
+  // 4. 候选池完成，进入详情抓取阶段
+  await sm.transition('detail_fetching');
+
+  // 4.1 先批量计算粗糙 CES（粉丝数还没拿到，likeToFansRatio 暂为 null）
+  const enriched = pool.map(n => services.scoring.applyCesAndDecay(n));
+
+  // 4.2 按 ces_score 取 top N，作为"候选爆款"
+  const topCandidates = enriched
+    .sort((a, b) => b.cesScore - a.cesScore)
+    .slice(0, Math.min(100, payload.targetBombCount * 5));  // 多取一些以防判定失败
+
+  // 4.3 串行抓详情 + 粉丝数
+  for (const note of topCandidates) {
+    if (sm.current !== 'detail_fetching') break;
+
+    // 详情接口
+    const detail = await services.xhs.detailFetcher.fetch(note.noteId, note.xsecToken);
+    if (detail) {
+      note.desc = detail.desc;
+      note.time = detail.time;
+      note.tagList = detail.tag_list;
+      note.detailFetchedAt = Date.now();
+    } else {
+      note.detailFetchFailed = true;
+    }
+
+    // 粉丝数（per-user 缓存）
+    const fans = await services.xhs.userFetcher.fetchFans(note.user.userId);
+    note.user.fans = fans;
+    if (fans === null) note.fanFetchFailed = true;
+
+    // 重新计算（这次有 likeToFansRatio）
+    services.scoring.applyAll(note, payload.thresholds);
+    emitProgress({ detailFetchedCount: ++progressDetailCount });
+
+    await sleep(randomBetween(800, 2000));
+  }
+
+  // 5. 二次过滤：时间窗口
+  const inWindow = enriched.filter(n => services.scoring.inTimeWindow(n.time, payload.timeWindow));
+
+  // 6. 判定爆款
+  const bombs = inWindow.filter(n => n.isBomb);
+
+  // 7. 兜底（爆款不足时）
+  let display = bombs;
+  if (bombs.length < payload.targetBombCount) {
+    const fallback = inWindow
+      .filter(n => !n.isBomb)
+      .sort((a, b) => b.weightedScore - a.weightedScore)
+      .slice(0, payload.targetBombCount - bombs.length)
+      .map(n => ({ ...n, bombReason: 'fallback' as const }));
+    display = [...bombs, ...fallback];
+  }
+
+  // 8. 持久化批次
+  const finalBatch: BatchRecord = {
+    batchId: payload.batchId,
+    createdAt: Date.now(),
+    keywords: payload.keywords,
+    timeWindow: payload.timeWindow,
+    thresholds: payload.thresholds,
+    candidatePoolMax: payload.candidatePoolMax,
+    notes: display,
+    candidateCount: pool.length,
+    bombCount: bombs.length,
+    fallbackCount: display.length - bombs.length,
+    status: 'complete',
+    aiResults: { topicSuggestions: null, angleClusters: null, trendKeywords: null, structureBreakdown: {} },
+  };
+  await services.chrome.storage.set(`batch_${payload.batchId}`, finalBatch);
+  useHistoryStore.getState().push(finalBatch);
+
+  // 9. 通知 dashboard 切换到该批次
+  await services.chrome.messaging.send({ kind: 'BATCH_COMPLETE', batchId: payload.batchId });
+  await sm.transition('complete');
+}
+```
 
 ---
 
-*xhs-radar L3 v0.2 批次 1–2 / 4 · 2026-05-09*
+### 5.2 拦截器注入（content script + MAIN world）
+
+```typescript
+// src/shell/content_scripts/xhs_interceptor.ts (ISOLATED world)
+
+let captureBatchId: string | null = null;
+
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg.kind === 'BEGIN_INTERCEPT') {
+    captureBatchId = msg.batchId;
+    injectMainWorldHook();
+  }
+  if (msg.kind === 'SCROLL_ONCE') {
+    window.scrollBy({ top: window.innerHeight * 0.9, behavior: 'smooth' });
+  }
+});
+
+function injectMainWorldHook(): void {
+  const script = document.createElement('script');
+  script.src = chrome.runtime.getURL('interceptor_main.js');
+  (document.head || document.documentElement).appendChild(script);
+  script.onload = () => script.remove();
+}
+
+window.addEventListener('message', (e) => {
+  if (e.source !== window) return;
+  if (e.data.__xhs_radar !== 'CAPTURED') return;
+  if (!captureBatchId) return;
+
+  // 转发给 service worker
+  chrome.runtime.sendMessage({
+    kind: 'NOTES_CAPTURED',
+    batchId: captureBatchId,
+    payload: e.data.payload,
+  });
+});
+```
+
+```typescript
+// src/services/xhs/interceptor_main.ts (MAIN world)
+
+(function () {
+  const SEARCH_PATH = '/api/sns/web/v1/search/notes';
+
+  const origFetch = window.fetch;
+  window.fetch = async function (...args) {
+    const response = await origFetch.apply(this, args);
+    const url = typeof args[0] === 'string' ? args[0] : args[0].url;
+    if (url.includes(SEARCH_PATH)) {
+      response.clone().json().then(data => {
+        window.postMessage({ __xhs_radar: 'CAPTURED', payload: data }, '*');
+      });
+    }
+    return response;
+  };
+
+  // XHR 同样劫持
+  const origXhrOpen = XMLHttpRequest.prototype.open;
+  const origXhrSend = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.open = function (method, url, ...rest) {
+    (this as any).__url = url;
+    return origXhrOpen.apply(this, [method, url, ...rest] as any);
+  };
+  XMLHttpRequest.prototype.send = function (...args) {
+    this.addEventListener('load', () => {
+      if ((this as any).__url?.includes(SEARCH_PATH)) {
+        try {
+          const data = JSON.parse(this.responseText);
+          window.postMessage({ __xhs_radar: 'CAPTURED', payload: data }, '*');
+        } catch {}
+      }
+    });
+    return origXhrSend.apply(this, args);
+  };
+})();
+```
+
+---
+
+### 5.3 验证码暂停与恢复
+
+```typescript
+// CaptchaPausedModal 的"我已通过"按钮 onClick
+
+async function onCaptchaResolvedClick(): Promise<void> {
+  await services.chrome.messaging.send({ kind: 'CAPTCHA_RESOLVED' });
+  // service worker 监听到后会重新尝试一次接口
+  // 若仍报 461，弹窗保留显示
+  useUiStore.getState().hideModal();
+}
+
+// service worker 端
+async function waitForUserCaptchaResolution(): Promise<void> {
+  return new Promise((resolve) => {
+    const listener = (msg) => {
+      if (msg.kind === 'CAPTCHA_RESOLVED') {
+        chrome.runtime.onMessage.removeListener(listener);
+        resolve();
+      }
+    };
+    chrome.runtime.onMessage.addListener(listener);
+  });
+}
+```
+
+---
+
+### 5.4 详情抽屉打开 → 懒加载正文
+
+```typescript
+// src/app/components/display/NoteCard.tsx::onViewDetailClick
+
+async function onViewDetailClick(note: NoteRecord): Promise<void> {
+  useUiStore.getState().openDrawer(note.noteId);
+
+  // 已抓过则直接显示
+  if (note.desc !== null) return;
+
+  // 未抓过，前往 service worker 拉取
+  // 注意：被点的可能是兜底（非爆款）笔记，主流程没抓过其详情
+  const result = await services.chrome.messaging.send({
+    kind: 'FETCH_NOTE_DETAIL',
+    payload: { noteId: note.noteId, xsecToken: note.xsecToken },
+  });
+  if (result.success) {
+    useBatchStore.getState().updateNoteDetail(note.noteId, {
+      desc: result.desc,
+      time: result.time,
+      tagList: result.tagList,
+      detailFetchedAt: Date.now(),
+    });
+  } else {
+    addToast({ type: 'error', message: `获取正文失败：${result.error}`, durationMs: 4000 });
+  }
+}
+```
+
+---
+
+### 5.5 4 个 AI 任务触发流程（统一模板）
+
+```typescript
+// src/app/components/ai/<XxxTab>.tsx 通用骨架
+
+async function triggerAiTask<T>(
+  kind: AiTaskKind,
+  scope: 'global' | 'per_note',
+  scopeId: string,                   // batchId 或 noteId
+  buildPrompt: () => { system: string; user: string },
+  schema: z.ZodType<T>,
+  storeWriter: (result: T) => void
+): Promise<void> {
+  const cfg = useConfigStore.getState();
+  if (!cfg.deepseekApiKey || cfg.apiKeyStatus !== 'valid') {
+    showModal({ kind: 'missing_api_key' });
+    return;
+  }
+
+  // 1. 标记 loading
+  if (scope === 'global') aiStore.setGlobalStatus(scopeId, kind, { status: 'loading', startedAt: Date.now() });
+  else aiStore.setPerNoteStatus(scopeId, { status: 'loading', startedAt: Date.now() });
+
+  // 2. 构造 prompt
+  const { system, user } = buildPrompt();
+
+  // 3. 调用（含一次重试）
+  let result: T | null = null;
+  let lastError: { code: string; message: string } | null = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      result = await services.deepseek.client.call(
+        cfg.deepseekApiKey,
+        cfg.deepseekModel,
+        system,
+        user,
+        schema,
+        attempt === 1 ? { temperature: 0.1, strictReminder: true } : undefined
+      );
+      break;
+    } catch (e) {
+      lastError = classifyDeepSeekError(e);
+      if (lastError.code === '401') {
+        cfg.setApiKeyStatus('invalid');
+        showModal({ kind: 'missing_api_key' });
+        if (scope === 'global') aiStore.setGlobalStatus(scopeId, kind, { status: 'failed', error: lastError });
+        else aiStore.setPerNoteStatus(scopeId, { status: 'failed', error: lastError });
+        return;
+      }
+      if (attempt === 0) await sleep(1000 * Math.pow(2, attempt));
+    }
+  }
+
+  // 4. 写入结果
+  if (result) {
+    storeWriter(result);
+    if (scope === 'global') aiStore.setGlobalStatus(scopeId, kind, { status: 'success' });
+    else aiStore.setPerNoteStatus(scopeId, { status: 'success' });
+  } else {
+    if (scope === 'global') aiStore.setGlobalStatus(scopeId, kind, { status: 'failed', error: lastError });
+    else aiStore.setPerNoteStatus(scopeId, { status: 'failed', error: lastError });
+  }
+}
+
+// 调用示例：选题建议
+async function onTopicSuggestionsTrigger(): Promise<void> {
+  const batch = useBatchStore.getState().current!;
+  const bombs = batch.notes.filter(n => n.isBomb);
+
+  if (bombs.length === 0) {
+    addToast({ type: 'warning', message: '当前批次无爆款，无法 AI 分析' });
+    return;
+  }
+
+  await triggerAiTask(
+    'topic_suggestions',
+    'global',
+    batch.batchId,
+    () => buildTopicSuggestionsPrompt(batch.keywords, bombs),
+    TopicSuggestionsResultSchema,
+    (result) => useBatchStore.getState().setAiResult('topicSuggestions', result)
+  );
+}
+```
+
+---
+
+### 5.6 收藏 / 取消收藏
+
+```typescript
+// 加入收藏
+async function onFavoriteClick(note: NoteRecord, batchId: string): Promise<void> {
+  useFavoritesStore.getState().add(note, batchId);
+  addToast({ type: 'success', message: '已加入收藏', durationMs: 2000 });
+}
+
+// 取消收藏
+async function onUnfavoriteClick(noteId: string): Promise<void> {
+  const confirmed = await showModal({
+    kind: 'confirm_delete',
+    data: { what: '收藏', name: useFavoritesStore.getState().byNoteId[noteId].snapshot.title },
+  });
+  if (!confirmed) return;
+
+  useFavoritesStore.getState().remove(noteId);
+  addToast({ type: 'success', message: '已取消收藏', durationMs: 2000 });
+}
+```
+
+---
+
+### 5.7 历史批次载入
+
+```typescript
+async function onLoadBatchClick(batchId: string): Promise<void> {
+  const batch = await useHistoryStore.getState().loadBatchDetail(batchId);
+  if (!batch) {
+    addToast({ type: 'error', message: '批次数据已损坏或被清理' });
+    return;
+  }
+  useBatchStore.getState().setCurrent(batch);
+  useUiStore.getState().setTab('display');
+}
+```
+
+---
+
+### 5.8 CSV 导出
+
+```typescript
+// src/services/csv/exporter.ts
+
+export function exportBatchAsCsv(batch: BatchRecord): void {
+  const headers = [
+    '批次时间','关键词','笔记ID','标题','博主','粉丝数',
+    '点赞','收藏','评论','分享','CES','点赞粉丝比','是否爆款',
+    '发布时间','笔记URL','正文'
+  ];
+  const rows = batch.notes.map(n => [
+    formatDate(batch.createdAt),
+    batch.keywords.join('|'),
+    n.noteId,
+    csvEscape(n.title),
+    csvEscape(n.user.nickname),
+    n.user.fans ?? '',
+    n.interactInfo.likedCount,
+    n.interactInfo.collectedCount,
+    n.interactInfo.commentCount,
+    n.interactInfo.shareCount,
+    n.cesScore.toFixed(1),
+    n.likeToFansRatio?.toFixed(3) ?? '',
+    n.isBomb ? 'Y' : 'N',
+    n.time ? formatDate(n.time) : '',
+    `https://www.xiaohongshu.com/explore/${n.noteId}?xsec_token=${n.xsecToken}`,
+    csvEscape(n.desc ?? ''),
+  ]);
+
+  const csv = '﻿' + [headers, ...rows].map(r => r.join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const filename = `xhs-radar-${formatDate(batch.createdAt, 'YYYYMMDD-HHmm')}-${batch.keywords[0]}.csv`;
+
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function csvEscape(s: string): string {
+  if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
+```
+
+---
+
+### 5.9 路由切换 + URL Hash 同步
+
+```typescript
+// src/app/hooks/useHashRoute.ts
+
+export function useHashRoute(): { tab: Tab; setTab: (t: Tab) => void } {
+  const [tab, setTabState] = useState<Tab>(parseHash());
+
+  useEffect(() => {
+    const onHashChange = () => setTabState(parseHash());
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+
+  const setTab = (t: Tab) => {
+    window.location.hash = `#${t}`;
+    setTabState(t);
+    useUiStore.getState().setTab(t);
+  };
+
+  return { tab, setTab };
+}
+
+function parseHash(): Tab {
+  const h = window.location.hash.replace('#', '');
+  if (h === 'display' || h === 'favorites' || h === 'history') return h;
+  return 'config';
+}
+```
+
+---
+
+## 六、视觉 Token
+
+### 6.1 颜色（Tailwind 配置 + 十六进制）
+
+```typescript
+// tailwind.config.ts: theme.extend.colors
+
+export const COLORS = {
+  // 主色（小红书风格）
+  brand: {
+    50:  '#FFF1F3',
+    100: '#FFE0E5',
+    300: '#FF8092',
+    500: '#FF2442',  // 主色（按钮、爆款标签、当前 Tab 高亮）
+    600: '#E61E3A',
+    700: '#B81830',
+  },
+  // 强调色（潜力 / 警示信息）
+  accent: {
+    500: '#FF8C29',  // 暖橙
+    600: '#E5751F',
+  },
+  // 中性灰阶
+  neutral: {
+    0:   '#FFFFFF',
+    50:  '#FAFAFA',
+    100: '#F5F5F5',
+    200: '#EBEBEB',  // 分隔线
+    300: '#D4D4D4',  // 边框
+    500: '#737373',  // 辅助文字
+    700: '#404040',  // 二级文字
+    900: '#171717',  // 主文字
+  },
+  // 状态
+  success: { 500: '#16A34A', 100: '#DCFCE7' },
+  warning: { 500: '#F59E0B', 100: '#FEF3C7' },
+  error:   { 500: '#DC2626', 100: '#FEE2E2' },
+} as const;
+```
+
+### 6.2 字号（rem + px）
+
+| 类名 | 字号 | px | 用途 |
+|---|---|---|---|
+| `text-3xl` | 1.875rem | 30px | Logo、空状态主文案 |
+| `text-2xl` | 1.5rem | 24px | 页面主标题 |
+| `text-xl`  | 1.25rem | 20px | Tab 标题、批次信息条 |
+| `text-base` | 1rem | 16px | 卡片标题、AI 结果标题 |
+| `text-sm`  | 0.875rem | 14px | 卡片字段、表单标签、正文 |
+| `text-xs`  | 0.75rem | 12px | 粉丝数、时间戳、tooltip |
+
+### 6.3 间距（Tailwind 默认 spacing × 4px）
+
+| 用途 | 类名 | px |
+|---|---|---|
+| 卡片内边距 | `p-5` | 20px |
+| 区块外边距 | `mb-6` | 24px |
+| 表单字段间距 | `gap-4` | 16px |
+| Toast 距视口 | `top-6 right-6` | 24px |
+| 详情抽屉宽度 | `w-[40%]` 最小 `min-w-[480px]` | — |
+| 顶部导航高度 | `h-14` | 56px |
+| 底部状态条高度 | `h-12` | 48px |
+
+### 6.4 圆角
+
+| 用途 | px |
+|---|---|
+| 卡片 | 12px (`rounded-xl`) |
+| 按钮 | 8px (`rounded-lg`) |
+| 输入框 | 8px |
+| Chip 标签 | 9999px (`rounded-full`) |
+
+### 6.5 阴影
+
+| 用途 | Tailwind | 值 |
+|---|---|---|
+| 卡片默认 | `shadow-sm` | `0 1px 2px 0 rgba(0,0,0,0.05)` |
+| 卡片 hover | `shadow-md` | `0 4px 6px -1px rgba(0,0,0,0.10), 0 2px 4px -2px rgba(0,0,0,0.06)` |
+| 弹窗 | `shadow-2xl` | `0 25px 50px -12px rgba(0,0,0,0.25)` |
+| 抽屉 | `shadow-xl` | `0 20px 25px -5px rgba(0,0,0,0.10)` |
+
+### 6.6 动效
+
+| 场景 | 时长 | 缓动 |
+|---|---|---|
+| Tab 切换 | 200ms | ease-out |
+| 抽屉滑入 / 滑出 | 250ms | ease-in-out |
+| 弹窗淡入 | 150ms | ease-out |
+| Toast 出现 / 消失 | 200ms | ease-in-out |
+| 按钮 hover | 100ms | linear |
+
+---
+
+## 七、边界条件与错误处理
+
+> 边界情况已分散在各处，本节做交叉索引 + 兜底规则。
+
+### 7.1 索引
+
+| 场景 | 文档位置 |
+|---|---|
+| 关键词重复 / 长度违规 | §2.1 区块 A |
+| 时间窗口跨度异常 | §2.1 区块 B |
+| 阈值越界 | §2.1 区块 C |
+| storage 写入失败（quota） | L2 §4.4 |
+| 笔记已删除 / 详情接口 404 | §4.3 (TC A2-T3) |
+| 风控验证码 | §5.3 + §4.3 |
+| 详情连续失败 5 次 | §4.3 |
+| 详情接口超时 | §4.3 (TC A2-T6) |
+| desc 为空（视频笔记） | §4.3 (TC A2-T7) |
+| 用户主页隐私 / 封禁 | §4.4 (TC A3-T3) |
+| 缓存命中 | §4.4 (TC A3-T6) |
+| DeepSeek 401 / 429 / 5xx | §4.5 (TC A4-T2/T3) |
+| DeepSeek JSON 围栏 / 截断 / 解析失败 | §4.5 (TC A4-T4/T6/T8) |
+| 抓满候选未达爆款数 | §5.1 步骤 7（兜底） |
+| 同笔记多关键词命中 | §5.1 步骤 3 dedupeByNoteId |
+
+### 7.2 全局错误兜底
+
+```typescript
+// src/app/components/shared/ErrorBoundary.tsx
+
+class ErrorBoundary extends React.Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('[xhs-radar] uncaught', error, info);
+    // 一期不上报；二期可考虑可选 telemetry
+    // TODO [PHASE 2]: 用户可选开启错误上报
+  }
+
+  render() {
+    if (this.state.error) {
+      return <ErrorCard
+        title="出现意外错误"
+        message={this.state.error.message}
+        actions={[{ label: '复制错误信息', onClick: () => copyText(this.state.error!.stack ?? '') }]}
+      />;
+    }
+    return this.props.children;
+  }
+}
+```
+
+### 7.3 storage quota 处理
+
+```typescript
+async function safeSetStorage(key: string, value: unknown): Promise<void> {
+  try {
+    await services.chrome.storage.set(key, value);
+  } catch (e) {
+    if (e.message.includes('QUOTA')) {
+      showModal({
+        kind: 'storage_full',
+        data: {
+          message: '存储空间不足，请删除部分历史批次或导出后清理。',
+          action: 'goto_history',
+        },
+      });
+    } else {
+      throw e;
+    }
+  }
+}
+```
+
+---
+
+## 八、验收标准（AC-001 格式）
+
+> 每条独立可测试。Phase 2 项不计入。
+
+### 配置 Tab
+
+- **AC-001** 用户在关键词输入框输入"AI"按 Enter，关键词列表新增 chip "AI"，输入框清空
+- **AC-002** 已存在的关键词重复输入，提示"该关键词已存在"，不新增
+- **AC-003** 关键词长度为 0 或 > 30 字符，提示长度违规且不新增
+- **AC-004** 关键词已达 10 个时，输入框置灰，tooltip 显示"已达上限 10 个"
+- **AC-005** 用户切到"自定义"时间窗口，展开起止日期选择器
+- **AC-006** 自定义日期跨度 > 365 天时，红框 + 文案提示
+- **AC-007** CES 阈值输入 5（< 10）时，红框 + 提示，不保存
+- **AC-008** 点击"测试 Key"，按钮显示 spinner；成功后顶部 🔑 变绿；失败后变黄 + Toast 错误信息
+- **AC-009** 关键词为 0 时，"开始抓取"按钮 disabled
+- **AC-010** 点击"开始抓取"前，未登录小红书时弹出 §5.2 弹窗
+
+### 抓取流程
+
+- **AC-011** 点击"开始抓取"后 1 秒内，自动切到展示 Tab + 底部状态条出现
+- **AC-012** 抓取过程中，状态条显示候选数 / 爆款数 + 当前关键词
+- **AC-013** 抓满候选池上限或满足目标爆款数后，自动停止 + 状态条变"已完成"
+- **AC-014** 抓取过程遇到验证码时，弹出 §5.3 弹窗 + 状态条变黄"已暂停"
+- **AC-015** 用户点"我已通过"后，5 秒内若仍报 461，弹窗保留显示
+- **AC-016** 抓取过程中关闭 Dashboard Tab，再次打开时状态恢复（含进度）
+
+### 展示 Tab
+
+- **AC-017** 批次完成后，列表卡片按 weighted_score 降序展示
+- **AC-018** 点排序下拉切换"点赞" → 卡片重排（不重新抓）
+- **AC-019** 切筛选"仅爆款" → 卡片只剩 isBomb=true 的项
+- **AC-020** 卡片显示标题、博主、粉丝数、互动数 4 项、CES、爆款标签
+- **AC-021** 爆款卡片右上有红色"🔥 爆款"标签；兜底未达标的有灰色"📄 未达标"
+- **AC-022** 点"查看正文"，详情抽屉滑入；若未抓过 desc，显示 spinner，抓完显示
+- **AC-023** 点"在小红书打开"，新 Tab 打开 `https://www.xiaohongshu.com/explore/<noteId>?xsec_token=<token>`
+- **AC-024** 改阈值后回到展示 Tab，列表的 isBomb 标记按新阈值重算（不重抓）
+
+### AI 处理
+
+- **AC-025** 未配置 Key 时点任何 AI 触发按钮 → 弹出 §5.4 弹窗
+- **AC-026** 点"分析选题"按钮 → 状态变 loading；成功后展示 5 条选题；失败后显示错误 + 重试按钮
+- **AC-027** 同一批次再次进入展示 Tab，已成功的 AI 结果直接显示（不重新调用）
+- **AC-028** 单条结构拆解：每条笔记独立缓存，切换不同笔记重新调用
+- **AC-029** AI 输出 JSON 解析失败 → 自动重试 1 次（temperature=0.1） → 仍失败 → 显示错误
+- **AC-030** AI 输出 401 → 自动设 apiKeyStatus='invalid' + 弹 §5.4
+
+### 收藏与历史
+
+- **AC-031** 点卡片 ⭐ → 加入收藏 + Toast"已加入收藏"
+- **AC-032** 收藏 Tab 列表按 favoritedAt 降序
+- **AC-033** 取消收藏点删除 → 弹 §5.5 → 确认后从列表消失 + Toast
+- **AC-034** 收藏列表为空 → 显示空状态文案"还没有收藏任何笔记..."
+- **AC-035** 历史 Tab 仅显示最近 10 条；第 11 次抓取完成时最旧那条自动消失 + Toast
+- **AC-036** 点历史项"载入" → 切到展示 Tab + 该批次成为 current
+- **AC-037** 点历史项"删除" → §5.5 弹窗 → 确认后从列表消失
+- **AC-038** 点"导出 CSV" → 浏览器下载 CSV，文件名形如 `xhs-radar-20260509-1430-AI工具.csv`
+- **AC-039** CSV 第一列含 BOM（`﻿`），中文不乱码
+
+### 全局
+
+- **AC-040** Tab 切换响应 ≤ 250ms（ease-out）
+- **AC-041** URL hash `#display` 直接打开时，自动定位到展示 Tab（无 batch 时显示空状态）
+- **AC-042** 顶部 🔑 状态指示器与 apiKeyStatus 实时同步
+- **AC-043** 诊断模式弹窗显示最近 10 条已拦截接口路径 + 命中数
+- **AC-044** 任何未捕获异常被 ErrorBoundary 接住，显示错误卡 + 复制按钮
+
+---
+
+## 九、Phase 2 占位
+
+```typescript
+// === 一期不实现，仅在代码中以 // TODO [PHASE 2] 占位 ===
+
+// 1. 笔记图片抓取与展示
+// TODO [PHASE 2]: 在 NoteRecord 添加 imageList 字段；NoteCard 显示首图；DetailDrawer 含图片画廊
+
+// 2. AI 改写 / 仿写
+// TODO [PHASE 2]: 在 ai/ 目录新增 RewriteTab.tsx；prompts.ts 增加 rewrite system prompt；输出含敏感词过滤（参考 xhs-ai-writer/lib/sensitive-words.ts）
+
+// 3. 跨批次趋势对比
+// TODO [PHASE 2]: 在历史 Tab 增加"对比"模式，多选 2–3 个批次后展示对比视图（同关键词不同时段的爆款变化）
+
+// 4. 收藏笔记"已写"状态标记
+// TODO [PHASE 2]: FavoriteRecord 增加 status: 'pending' | 'writing' | 'done' 字段 + 标记按钮
+
+// 5. 多设备同步
+// TODO [PHASE 2]: 评估走 chrome.storage.sync（容量小）或外部服务（云函数）
+
+// 6. Edge / Firefox 兼容
+// TODO [PHASE 2]: manifest.config.ts 增加 browser_specific_settings；测试 webRequest / fetch 劫持差异
+
+// 7. 错误上报（Telemetry）
+// TODO [PHASE 2]: 用户可选开启，匿名上报错误堆栈
+
+// 8. 关注权重接入 CES
+// TODO [PHASE 2]: 当详情接口返回中能稳定拿到 followed_count 时，CES 公式启用 +8×followed
+```
+
+---
+
+## 十、Mock 数据
+
+### 10.1 单条 NoteRecord 样例（基于 `xhs_web_crawler-main/README.md` 的真实样例）
+
+```typescript
+// src/test/fixtures/note.fixture.ts
+
+export const MOCK_NOTE: NoteRecord = {
+  noteId: '65d8f3a7000000001f00b3c2',
+  xsecToken: 'AB-vK3wLpJ8nQwR5xYz9bV3mN7sT4aE6cF1gH2jK5lP9qR0',
+  modelType: 'note',
+  title: 'Claude 3.5 Sonnet 实测：3 个让我惊艳的能力',
+  time: 1714521600000,            // 2026-05-01 00:00:00
+  lastUpdateTime: 1714608000000,
+  tagList: [
+    { type: 'topic', name: 'AI 工具', id: '5d6e7f8' },
+    { type: 'topic', name: 'Claude' },
+  ],
+  user: {
+    userId: '5b0f7d9d4eacab0001a6d1e8',
+    nickname: '小番茄爱 AI',
+    avatar: 'https://sns-avatar-qc.xhscdn.com/avatar/abc.jpg',
+    fans: 8623,
+  },
+  interactInfo: {
+    likedCount: 12000,             // "1.2万" → 12000
+    collectedCount: 3400,
+    commentCount: 287,
+    shareCount: 156,
+  },
+  desc: '今天试了 Claude 3.5 Sonnet，必须给大家分享...（正文 800 字略）',
+  detailFetchedAt: 1715000000000,
+  cesScore: 12000 + 3400 + 287 * 4 + 156 * 4,  // = 17172
+  likeToFansRatio: 12000 / 8623,   // ≈ 1.392
+  daysSincePublish: 8.5,
+  timeDecayFactor: Math.exp(-0.1 * 8.5),  // ≈ 0.4274
+  weightedScore: 17172 * 0.4274,   // ≈ 7339
+  isBomb: true,
+  bombReason: 'super',
+  clusterLabel: '测评类',
+  detailFetchFailed: false,
+  fanFetchFailed: false,
+  isDeleted: false,
+};
+```
+
+### 10.2 BatchRecord 样例
+
+```typescript
+export const MOCK_BATCH: BatchRecord = {
+  batchId: 'btch_2026050914301',
+  createdAt: 1715253000000,
+  keywords: ['AI 工具', 'Claude 教程'],
+  timeWindow: { type: 'preset', days: 7 },
+  thresholds: { ces: 100, likeRatio: 0.5 },
+  candidatePoolMax: 200,
+  notes: [MOCK_NOTE /* + 18 more */],
+  candidateCount: 187,
+  bombCount: 18,
+  fallbackCount: 2,
+  status: 'complete',
+  aiResults: {
+    topicSuggestions: null,
+    angleClusters: null,
+    trendKeywords: null,
+    structureBreakdown: {},
+  },
+};
+```
+
+### 10.3 AI 结果样例（4 个）
+
+```typescript
+export const MOCK_TOPIC_SUGGESTIONS: TopicSuggestionsResult = {
+  suggestions: [
+    {
+      angle: 'AI 工具组合工作流：Claude + Cursor + Notion 的协同实测',
+      rationale: '当前赛道 18 条爆款中仅 2 条涉及多工具组合，"工作流" 角度稀缺度高',
+      relatedNoteIds: ['65d8f3a7...', '65e1c2b8...'],
+      novelty: 'underexplored',
+    },
+    // ... 4 more
+  ],
+  generatedAt: 1715253600000,
+};
+
+export const MOCK_STRUCTURE_BREAKDOWN: StructureBreakdownResult = {
+  noteId: '65d8f3a7000000001f00b3c2',
+  titleHook: { pattern: '具体产品 + 数字 + 情绪词', explanation: '"3 个让我惊艳"用具体数字和强情绪词钩子' },
+  opening: { type: 'hook', content: '今天试了 Claude 3.5 Sonnet，必须给大家分享...', explanation: '即时性 + 第一人称 + 强分享意愿' },
+  bodyStructure: [
+    { section: '能力 1：长文档分析', summary: '...' },
+    { section: '能力 2：代码理解', summary: '...' },
+    { section: '能力 3：创意写作', summary: '...' },
+  ],
+  ending: { cta: '你最想用 Claude 做什么？评论区聊', type: 'question' },
+  generatedAt: 1715253900000,
+};
+
+export const MOCK_ANGLE_CLUSTERS: AngleClustersResult = {
+  clusters: [
+    { label: '测评类', description: '评测某 AI 产品的能力 / 优缺点', noteIds: ['65d8f3a7...', /*...*/], percentage: 38 },
+    { label: '教程类', description: '手把手教如何使用某 AI', noteIds: [/*...*/], percentage: 27 },
+    { label: '清单类', description: '罗列 N 个工具 / 提示词', noteIds: [/*...*/], percentage: 22 },
+    { label: '故事类', description: '个人体验 / 使用案例', noteIds: [/*...*/], percentage: 13 },
+  ],
+  generatedAt: 1715254200000,
+};
+
+export const MOCK_TREND_KEYWORDS: TrendKeywordsResult = {
+  highFrequencyWords: [
+    { word: 'Claude', count: 14, sampleNoteIds: ['65d8f3a7...'] },
+    { word: '提示词', count: 11, sampleNoteIds: [/*...*/] },
+    { word: '工作流', count: 7, sampleNoteIds: [/*...*/] },
+    // ... 17 more
+  ],
+  topicTags: [
+    { name: 'AI 工具', count: 18 },
+    { name: 'Claude', count: 12 },
+    { name: 'ChatGPT', count: 9 },
+    // ... 17 more
+  ],
+  generatedAt: 1715254500000,
+};
+```
+
+### 10.4 拦截响应原始样例（用于单测）
+
+```typescript
+// 来自 xhs_web_crawler-main/README.md 真实结构（已脱敏）
+export const MOCK_RAW_SEARCH_RESPONSE = {
+  code: 0,
+  success: true,
+  msg: 'success',
+  data: {
+    has_more: true,
+    items: [
+      {
+        id: '65d8f3a7000000001f00b3c2',
+        model_type: 'note',
+        xsec_token: 'AB-vK3...',
+        note_card: {
+          type: 'normal',
+          display_title: 'Claude 3.5 Sonnet 实测：3 个让我惊艳的能力',
+          user: {
+            user_id: '5b0f7d9d4eacab0001a6d1e8',
+            nickname: '小番茄爱 AI',
+            avatar: 'https://sns-avatar-qc.xhscdn.com/avatar/abc.jpg',
+          },
+          interact_info: {
+            liked: false,
+            liked_count: '1.2万',
+            collected: false,
+            collected_count: '3400',
+            comment_count: '287',
+            share_count: '156',
+          },
+        },
+      },
+      {
+        id: 'ad_xxx',
+        model_type: 'ad',  // 应被过滤
+      },
+    ],
+  },
+};
+```
+
+---
+
+## 批次 3 自检
+
+- [x] 9 个交互流程伪代码完整，链条无跳步
+- [x] 涉及 chrome.* 调用一律走 services/chrome（强制铁律）
+- [x] 视觉 Token 全部为十六进制 / px 具体值（无语义描述残留）
+- [x] 边界条件交叉索引全覆盖（10+ 项）
+- [x] storage quota / ErrorBoundary 全局兜底
+- [x] 验收标准 44 条，每条独立可测试
+- [x] Phase 2 全部用 `// TODO [PHASE 2]` 占位
+- [x] Mock 数据基于 xhs_web_crawler README 真实样例
+- [x] 没有"参考 L2""根据设计"等模糊引用
+- [x] AI 结果 Mock 含 4 类 + 拦截响应原始 Mock
+
+---
+
+## 👉 等你确认后进入批次 4（最后一批）
+
+**批次 4 内容：** Plan Task 清单 — Codex 执行任务清单（按 Phase 1 / Phase 2 + 模块分组，每条 10–20 min 粒度，对应 AC 编号）。
+
+---
+
+*xhs-radar L3 v0.3 批次 1–3 / 4 · 2026-05-09*
