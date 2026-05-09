@@ -10,7 +10,7 @@
 |------|------|------|------|
 | L1 产品设计大纲（本文档） | 全局 | ✅ v0.4 | `docs/prd/xhs-radar-l1.md` |
 | L2 传统 PRD | 全局 | ✅ v0.1 | `docs/prd/xhs-radar-l2.md` |
-| L3 Coding PRD | 全局 | 🔲 待产出 | — |
+| L3 Coding PRD | 全局 | ✅ v1.0 | `docs/prd/xhs-radar-l3.md` |
 | HTML 原型（可选） | 前端 | 🔲 待产出 | — |
 
 ---

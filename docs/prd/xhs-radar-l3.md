@@ -1,6 +1,6 @@
 # xhs-radar 赛道爆款雷达 — L3 Coding PRD
 
-**版本：** v0.3（批次 1–3 已完成 / 4） | **状态：** 撰写中 | **日期：** 2026-05-09
+**版本：** v1.0（4 批次全部完成） | **状态：** ✅ 已完成 | **日期：** 2026-05-09
 **上游：** [`L1 v0.4`](./xhs-radar-l1.md) · [`L2 v0.1`](./xhs-radar-l2.md)
 **目标读者：** Codex / AI 执行引擎 + 研发工程师
 
@@ -12,7 +12,7 @@
 |------|------|------|
 | L1 产品设计大纲 | 全局 | ✅ v0.4 |
 | L2 传统 PRD | 全局 | ✅ v0.1 |
-| L3 Coding PRD（本文档） | 全局 | 🟡 批次 3 / 4 |
+| L3 Coding PRD（本文档） | 全局 | ✅ v1.0 |
 | HTML 原型 | 前端 | ⏭ 已跳过 |
 
 ---
@@ -2477,10 +2477,266 @@ export const MOCK_RAW_SEARCH_RESPONSE = {
 
 ---
 
-## 👉 等你确认后进入批次 4（最后一批）
+---
 
-**批次 4 内容：** Plan Task 清单 — Codex 执行任务清单（按 Phase 1 / Phase 2 + 模块分组，每条 10–20 min 粒度，对应 AC 编号）。
+# 📦 批次 4：Plan Task 清单 + L3 完成自检 + 交接产出
+
+## 十一、Plan Task — Codex 执行任务清单
+
+> 每条任务动词开头、对应 §8 AC 编号。粒度 10–30 min（部分集成型任务略长）。Codex 按顺序执行，每条完成后输出结果等待确认。
 
 ---
 
-*xhs-radar L3 v0.3 批次 1–3 / 4 · 2026-05-09*
+### 🟢 Phase 1.0：脚手架（~1 天）
+
+- [ ] **T-001** 复制 `xhs-ai-tool-main/` 中的 `vite.config.ts` / `tsconfig.json` / `tsconfig.app.json` / `tsconfig.node.json` / `eslint.config.js` 到 `xhs-radar/`
+- [ ] **T-002** 创建 `manifest.config.ts`：name=xhs-radar，permissions=`['storage','tabs','scripting','activeTab']`，host_permissions=`['*://*.xiaohongshu.com/*']`，background.service_worker=`src/shell/service_worker.ts`，content_scripts on `*://*.xiaohongshu.com/*` 注入 `src/shell/content_scripts/xhs_interceptor.ts`，action.default_popup=`public/popup.html`，web_accessible_resources 包含 `interceptor_main.js`
+- [ ] **T-003** 创建 `tailwind.config.ts`：写入 §6.1 全部颜色 + §6.2 字号 + §6.3 间距 + §6.4 圆角
+- [ ] **T-004** 初始化 `package.json` 并 `pnpm add` 依赖：`react@19`、`react-dom@19`、`zustand@4`、`nanoid`、`openai`、`zod`，devDeps：`@types/chrome`、`@types/react@19`、`@types/react-dom@19`、`typescript@5.8`、`vite@7`、`@crxjs/vite-plugin@2`、`@vitejs/plugin-react`、`@tailwindcss/vite@4`、`tailwindcss@4`、`vite-plugin-zip-pack`
+- [ ] **T-005** 创建 `public/dashboard.html`（含 `<div id="root">` 和 `<script type="module" src="/src/shell/dashboard_entry.tsx">`）
+- [ ] **T-006** 创建 `public/popup.html` 同样模板（指向 `popup.tsx`）
+- [ ] **T-007** 创建 `src/shell/dashboard_entry.tsx`：ReactDOM.createRoot + 渲染 `<App />` 占位（"Hello xhs-radar"）
+- [ ] **T-008** 跑 `pnpm dev`，加载未打包扩展到 Chrome，确认 popup 可打开 + Dashboard 新 Tab 能开（**验证 AC-040 链路通**）
+
+### 🟢 Phase 1.1：services/chrome 抽象层（~0.5 天）
+
+- [ ] **T-010** 实现 `src/services/chrome/storage.ts`：`get<T>(key)` / `set(key, value)` / `remove(key)` / `onChanged(handler)`；统一处理 quota 错误（throw `StorageQuotaError`）
+- [ ] **T-011** 实现 `src/services/chrome/messaging.ts`：`send(msg)` Promise 包装；`onMessage(kind, handler)` 类型化注册
+- [ ] **T-012** 实现 `src/services/chrome/tabs.ts`：`create(url)` / `query(filter)` / `sendMessage(tabId, msg)` Promise 包装
+- [ ] **T-013** 实现 `src/services/chrome/runtime.ts`：`getURL` / `id` / `onInstalled`
+- [ ] **T-014** 实现 `src/services/chrome/index.ts` 统一 barrel export
+
+### 🟢 Phase 1.2：scoring 业务计算（~0.5 天）
+
+- [ ] **T-020** 实现 `services/scoring/parse_count.ts`：处理 `1.2万` / `999+` / `8.6千` / `''` → number（**对应 TC A1-T4/T5/T6**）
+- [ ] **T-021** 实现 `services/scoring/ces.ts`：CES 公式 `liked + collected + 4*comment + 4*share`
+- [ ] **T-022** 实现 `services/scoring/decay.ts`：`exp(-0.1 * daysSincePublish)`
+- [ ] **T-023** 实现 `services/scoring/ratio.ts`：`liked / max(fans, 1)`，fans=null 时返回 null
+- [ ] **T-024** 实现 `services/scoring/filter.ts`：`isBomb(note, thresholds)` + 排序 + 兜底（**对应 §5.1 步骤 7**）
+- [ ] **T-025** 实现 `services/scoring/in_time_window.ts`：preset / custom 两种模式
+- [ ] **T-026** 实现 `services/scoring/apply_all.ts`：组合上述所有步骤为单一入口
+- [ ] **T-027** 写单测覆盖 parseCount / CES / decay / ratio / inTimeWindow / fallback 兜底
+
+### 🟢 Phase 1.3：Zustand stores（~1 天）
+
+- [ ] **T-030** 实现 `hooks/useChromeStoragePersist.ts`：监听 store 变化 → debounce 200ms → 写入 chrome.storage；启动时读取后 hydrate
+- [ ] **T-031** 实现 `store/configStore.ts` 全部字段 + actions（**对应 §2.1**）
+- [ ] **T-032** 实现 `store/scrapeStore.ts`
+- [ ] **T-033** 实现 `store/batchStore.ts`
+- [ ] **T-034** 实现 `store/favoritesStore.ts` + 持久化
+- [ ] **T-035** 实现 `store/historyStore.ts`：含 `push` 自动清理超 10 条 + Toast（**AC-035**）
+- [ ] **T-036** 实现 `store/aiStore.ts`
+- [ ] **T-037** 实现 `store/uiStore.ts`
+
+### 🟢 Phase 1.4：UI 共享组件（~0.5 天）
+
+- [ ] **T-040** 实现 `components/shared/Modal.tsx` 基础：Backdrop + 居中容器 + ESC 关闭 + 焦点陷阱
+- [ ] **T-041** 实现 `components/shared/ToastContainer.tsx` + `useToast` hook：队列、自动消失、手动关
+- [ ] **T-042** 实现 `components/shared/EmptyState.tsx`：插画占位 + 文案 + 主按钮
+- [ ] **T-043** 实现 `components/shared/LoadingSpinner.tsx`
+- [ ] **T-044** 实现 `components/shared/ErrorCard.tsx`：含重试按钮 + 复制错误按钮
+- [ ] **T-045** 实现 `components/shared/ErrorBoundary.tsx`（**对应 §7.2 + AC-044**）
+
+### 🟢 Phase 1.5：配置 Tab（~1 天）
+
+- [ ] **T-050** 实现 `KeywordChipsInput`：Enter/逗号添加 + × 删除 + 长度校验 + 重复检查（**AC-001~004**）
+- [ ] **T-051** 实现 `TimeWindowSelector`：4 选 1 + 自定义日期 + 跨度校验（**AC-005, 006**）
+- [ ] **T-052** 实现 `ThresholdInputs`：CES + 点赞/粉丝比 + 范围校验（**AC-007**）
+- [ ] **T-053** 实现 `TargetCountInput`：输入框 + 滑块联动
+- [ ] **T-054** 实现 `PoolMaxSelector`：200/250/300 单选
+- [ ] **T-055** 实现 `ApiKeyInput`：密码框 + 👁 切换 + 模型下拉 + 测试按钮（**AC-008**）
+- [ ] **T-056** 实现 `services/deepseek/client.ts::testKey()`：调一次 minimal 请求验证（被 T-055 调用）
+- [ ] **T-057** 实现 `StartScrapeButton`：粘性底部 + disabled 逻辑 + 配置摘要（**AC-009**）
+- [ ] **T-058** 实现 `routes/ConfigPage.tsx` 拼装
+
+### 🟢 Phase 1.6：小红书接入层（~2 天，最高风险）
+
+- [ ] **T-060** 实现 `services/xhs/selectors.ts`：维护 `SEARCH_PATH` / `FEED_PATH` / `USER_INFO_PATH` 等常量
+- [ ] **T-061** 实现 `services/xhs/interceptor_main.ts`（MAIN world）：fetch + XHR 双劫持 + postMessage（**对应 §5.2**）
+- [ ] **T-062** 实现 `src/shell/content_scripts/xhs_interceptor.ts`（ISOLATED world）：注入 main world 脚本 + 监听 message + 转发 sendMessage
+- [ ] **T-063** 配置 `manifest.config.ts::web_accessible_resources` 包含 `interceptor_main.js`
+- [ ] **T-064** 实现 `services/xhs/search_parser.ts`：解析 `XhsSearchNotesResponse` → `NoteRecord[]`，过滤 ad / 缺 xsec_token / model_type 校验（**TC A1-T1~T9**）
+- [ ] **T-065** 实现 `services/xhs/login_checker.ts`：通过 `chrome.cookies.get` 检查 `web_session` cookie（**AC-010**）
+- [ ] **T-066** 实现 `services/xhs/captcha_detector.ts`：检测响应 code=461 + Tab DOM 中 `.captcha-container`（**AC-014**）
+- [ ] **T-067** 实现 `services/xhs/detail_fetcher.ts`：通过 content script 中转 fetch + 重试 + 退避 + 错误码处理（**TC A2-T1~T10**）
+- [ ] **T-068** 实现 `services/xhs/user_fetcher.ts`：含 per-user fanCache（**TC A3-T1~T7**）
+- [ ] **T-069** 集成测试：dev 模式手动在小红书页面滚动，验证 search_parser 正确产出 NoteRecord[]
+
+### 🟢 Phase 1.7：抓取协调器（service worker，~1 天）
+
+- [ ] **T-070** 实现 `services/orchestrator/scrape_state_machine.ts`：7 状态机 + transition 校验
+- [ ] **T-071** 实现 `services/orchestrator/candidate_pool.ts`：dedupeByNoteId + 上限校验
+- [ ] **T-072** 实现 `services/orchestrator/progress_emitter.ts`：广播给 dashboard
+- [ ] **T-073** 实现 `src/shell/service_worker.ts` 主路由：`START_SCRAPE` / `CAPTCHA_RESOLVED` / `FETCH_NOTE_DETAIL` / `NOTES_CAPTURED`
+- [ ] **T-074** 实现 `handleStartScrape` 主流程（**对应 §5.1 + AC-011~016**）
+- [ ] **T-075** 实现 `hooks/useScrapeListener.ts`：dashboard 端订阅 SW 进度
+- [ ] **T-076** 实现 `BottomStatusBar`：候选/爆款/暂停状态显示（**AC-012**）
+- [ ] **T-077** 集成测试：手动跑完整抓取一次，验证 AC-011~016
+
+### 🟢 Phase 1.8：展示 Tab（~1.5 天）
+
+- [ ] **T-080** 实现 `BatchInfoBar`：批次摘要 + 重抓 + 另开新批（**AC-017**）
+- [ ] **T-081** 实现 `FilterSortBar`：排序下拉 + 筛选下拉 + 角度 chip（**AC-018, 019**）
+- [ ] **T-082** 实现 `NoteCard`：卡片字段 + 颜色编码 + 角标（**AC-020, 021**）
+- [ ] **T-083** 实现 `NoteCardGrid`：响应式网格（一期不上虚拟滚动）
+- [ ] **T-084** 实现 `DetailDrawer` 容器：滑入 250ms + 关闭按钮 + 关 ESC 兼容
+- [ ] **T-085** 实现 `DetailDrawer` 主体：标题 + 元数据 + 标签 + 正文
+- [ ] **T-086** 实现 "查看正文" 懒加载（**§5.4 + AC-022**）
+- [ ] **T-087** 实现 "在小红书打开" 跳转（**AC-023**）
+- [ ] **T-088** 实现 阈值变更后客户端重算 isBomb（**AC-024**）
+- [ ] **T-089** 实现 `routes/DisplayPage.tsx` 拼装
+
+### 🟢 Phase 1.9：AI 处理（~1.5 天）
+
+- [ ] **T-090** 实现 `services/deepseek/client.ts`：含 `Authorization` + `response_format` + 错误分类
+- [ ] **T-091** 实现 `services/deepseek/schemas.ts`：4 个 zod schema（`TopicSuggestionsResultSchema` 等）
+- [ ] **T-092** 实现 `services/deepseek/prompts.ts`：4 个 prompt 模板 + builder（输入笔记摘要预处理）
+- [ ] **T-093** 实现 `services/deepseek/retry.ts`：一次重试，第二次降 temperature=0.1 + 强化 prompt 末尾"严格只输出 JSON"
+- [ ] **T-094** 实现 `services/deepseek/strip_markdown_fence.ts`：去掉 ```json…``` 围栏
+- [ ] **T-095** 实现通用 `triggerAiTask` hook（**§5.5**）
+- [ ] **T-096** 实现 `AiTabsContainer`
+- [ ] **T-097** 实现 `TopicSuggestionsTab`（**AC-025, 026, 027**）
+- [ ] **T-098** 实现 `StructureBreakdownTab`（**AC-028**）
+- [ ] **T-099** 实现 `AngleClustersTab` + 角度回填到 `note.clusterLabel`（用于 FilterSortBar 筛选）
+- [ ] **T-100** 实现 `TrendKeywordsTab`
+- [ ] **T-101** 测试覆盖 AC-029（JSON 失败重试）+ AC-030（401 自动设 invalid）
+
+### 🟢 Phase 1.10：收藏 + 历史 Tab（~0.5 天）
+
+- [ ] **T-110** 实现 `FavoriteRow` + `FavoritesSubTab`（**AC-031~034**）
+- [ ] **T-111** 实现 `HistoryRow` + `HistorySubTab`（**AC-035~037**）
+- [ ] **T-112** 实现 `services/csv/exporter.ts`：含 BOM、csvEscape、文件名格式（**AC-038, 039**）
+- [ ] **T-113** 实现 `routes/FavoritesAndHistoryPage.tsx`：子 Tab 切换 + URL hash 同步
+- [ ] **T-114** 实现 取消收藏 + 删除历史的确认弹窗调用（**AC-033, 037**）
+
+### 🟢 Phase 1.11：弹窗（~0.5 天）
+
+- [ ] **T-120** 实现 `ConfirmStartScrapeModal`
+- [ ] **T-121** 实现 `NotLoggedInModal`（**AC-010**）
+- [ ] **T-122** 实现 `CaptchaPausedModal`（**AC-014, 015**）
+- [ ] **T-123** 实现 `MissingApiKeyModal`（**AC-025, 030**）
+- [ ] **T-124** 实现 `ConfirmDeleteModal` 通用（**AC-033, 037**）
+- [ ] **T-125** 实现 `DiagnosticsModal`（**AC-043**）：显示最近 10 条拦截路径 + 命中数 + 复制按钮
+
+### 🟢 Phase 1.12：路由 + 顶层（~0.5 天）
+
+- [ ] **T-130** 实现 `hooks/useHashRoute.ts`（**§5.9 + AC-040, 041**）
+- [ ] **T-131** 实现 `TopNavBar`：Logo + 三 Tab + AI Key 状态 + 诊断按钮（**AC-042**）
+- [ ] **T-132** 实现 `App.tsx`：路由分发 + ToastContainer + ModalRoot + ErrorBoundary 包裹（**AC-044**）
+- [ ] **T-133** 实现 `popup.tsx`："打开 Dashboard"按钮 + 简版进度显示
+- [ ] **T-134** 接入 popup → service worker → dashboard 整链路：点 popup 按钮 → tabs.create + 唤醒 SW
+
+### 🟢 Phase 1.13：测试与验收（~1.5 天）
+
+- [ ] **T-140** 单测：services/scoring 全部模块（含 parseCount 边界）
+- [ ] **T-141** 单测：configStore / favoritesStore / historyStore actions
+- [ ] **T-142** 集成测试：mock 拦截响应 → search_parser → store
+- [ ] **T-143** 集成测试：mock service worker handleStartScrape 流程
+- [ ] **T-144** 手动 E2E：跑完 AC-001 ~ AC-010（配置 Tab）
+- [ ] **T-145** 手动 E2E：跑完 AC-011 ~ AC-016（抓取流程，需真实小红书登录）
+- [ ] **T-146** 手动 E2E：跑完 AC-017 ~ AC-024（展示 Tab）
+- [ ] **T-147** 手动 E2E：跑完 AC-025 ~ AC-030（AI 处理，需真实 DeepSeek Key）
+- [ ] **T-148** 手动 E2E：跑完 AC-031 ~ AC-039（收藏 + 历史 + 导出）
+- [ ] **T-149** 手动 E2E：跑完 AC-040 ~ AC-044（全局：路由、错误边界、诊断）
+
+### 🟢 Phase 1.14：构建打包（~0.5 天）
+
+- [ ] **T-150** 配置 `vite.config.ts` 加入 `vite-plugin-zip-pack`，打包到 `release/release.zip`
+- [ ] **T-151** 跑 `pnpm build` 通过，无 TS 错误
+- [ ] **T-152** 跑 `pnpm lint` 通过
+- [ ] **T-153** Chrome 加载未打包扩展，跑 5 条真实关键词组（如 "AI 工具,Claude,ChatGPT"），观察是否触发风控
+- [ ] **T-154** 创建 `RELEASE_NOTES.md`：用户版简明使用说明（如何装、如何用、AI Key 怎么配）
+
+---
+
+### 🔵 Phase 2 占位（一期完成后启动，本次不实现）
+
+- [ ] **[PHASE 2] T-200** 笔记图片抓取与展示（NoteRecord.imageList + 图片画廊）
+- [ ] **[PHASE 2] T-201** AI 改写/仿写 Tab（参考 xhs-ai-writer 的 prompts.ts + sensitive-words.ts）
+- [ ] **[PHASE 2] T-202** 跨批次趋势对比视图
+- [ ] **[PHASE 2] T-203** 收藏笔记"已写"状态标记
+- [ ] **[PHASE 2] T-204** 多设备同步评估
+- [ ] **[PHASE 2] T-205** Edge / Firefox 兼容性适配
+- [ ] **[PHASE 2] T-206** 错误上报（用户可选 Telemetry）
+- [ ] **[PHASE 2] T-207** 关注权重接入 CES 公式
+
+---
+
+### Plan Task 总览
+
+| Phase | 任务数 | 预估工作量 | 主要 AC 范围 |
+|---|---|---|---|
+| 1.0 脚手架 | 8 | 1 天 | — |
+| 1.1 chrome services | 5 | 0.5 天 | — |
+| 1.2 scoring | 8 | 0.5 天 | — |
+| 1.3 stores | 8 | 1 天 | — |
+| 1.4 共享 UI | 6 | 0.5 天 | AC-044 |
+| 1.5 配置 Tab | 9 | 1 天 | AC-001~009 |
+| 1.6 小红书接入 | 10 | 2 天 | TC A1/A2/A3 全部 |
+| 1.7 抓取协调器 | 8 | 1 天 | AC-011~016 |
+| 1.8 展示 Tab | 10 | 1.5 天 | AC-017~024 |
+| 1.9 AI 处理 | 12 | 1.5 天 | AC-025~030 |
+| 1.10 收藏+历史 | 5 | 0.5 天 | AC-031~039 |
+| 1.11 弹窗 | 6 | 0.5 天 | AC-010, 014, 015, 025, 033, 037, 043 |
+| 1.12 路由+顶层 | 5 | 0.5 天 | AC-040~042, 044 |
+| 1.13 测试+验收 | 10 | 1.5 天 | AC 全部回归 |
+| 1.14 构建打包 | 5 | 0.5 天 | — |
+| **Phase 1 合计** | **115** | **~13.5 天 ≈ 2.7 周** | **44 条 AC** |
+
+> 总耗时与 L1 「~2.5 周」预估基本一致（略保守）。如启用 Codex 并行加速，实际可压缩到 8–10 天。
+
+---
+
+## ✅ L3 完成自检（Skill HARD-GATE）
+
+- [x] 组件树完整，每个组件有清晰用途（§一）
+- [x] 所有 State 字段有 TypeScript 类型 + 初始值 + 更新时机（§二）
+- [x] 所有 API 有完整 Request / Response 类型定义（§三）
+- [x] 每个 API 有请求构造规则 + 测试用例（§四，47 条 TC）
+- [x] 每个交互逻辑是完整链条，没有跳步（§五，9 个流程伪代码）
+- [x] 颜色是十六进制值（§6.1，全部 `#XXXXXX`）
+- [x] 验收标准每条可独立测试（§八，AC-001 ~ AC-044）
+- [x] Phase 2 全部用 `// TODO [PHASE 2]` 占位（§九）
+- [x] Mock 数据基于 GitHub 真实数据（§十，源自 `xhs_web_crawler-main/README.md`）
+- [x] 没有"参考 L2""根据设计"等模糊引用
+- [x] Plan Task 已完整列出，每条有动词开头 + AC 编号引用
+- [x] Task 顺序符合依赖关系（脚手架 → services → stores → UI → 集成）
+- [x] L3 已存入 GitHub `docs/prd/`（push 完成后生效）
+
+## ✅ 三层一致性检查（Skill HARD-GATE）
+
+- [x] **L1 → L2** L1 全部 14 个一期功能点在 L2 都有对应章节（L2 文末已列对照表）
+- [x] **L2 → L3** L2 所有字段在 L3 §3.1/3.2/3.3 都有 TypeScript 类型定义
+- [x] **L2 → L3** L2 所有 4 个外部接口依赖在 L3 §三 都有完整 Schema
+- [x] **L1 一期范围 vs L3 Phase 2 占位** 无矛盾（一期含的功能不会出现在 // TODO [PHASE 2] 中）
+- [x] **L2 → L3** L2 §4.4 边界条件在 L3 §七 已交叉索引或 §四 测试用例覆盖
+
+---
+
+## 📦 Step 9 — 交接 Codex（标准产出）
+
+```
+✅ L1 产品设计大纲 — 完成（v0.4）
+   docs/prd/xhs-radar-l1.md
+✅ L2 传统 PRD — 完成（v0.1）
+   docs/prd/xhs-radar-l2.md
+✅ L3 Coding PRD — 完成（v1.0）
+   docs/prd/xhs-radar-l3.md
+   └─ 第 11 章 Plan Task 清单（115 条 Phase 1 + 8 条 Phase 2 占位）
+⏭ HTML 原型 — 跳过（用户选择 B 路径）
+
+下一步（在 Claude Code / Codex 里执行）：
+
+> 请按 docs/prd/xhs-radar-l3.md 第 11 章 Plan Task 清单逐条执行 Phase 1：
+> 1. 从 T-001 开始，每条任务完成后输出关键变更并等待我确认后继续
+> 2. 严守第 1.1 节铁律：src/app/ 不允许直接 import 任何 chrome.* API
+> 3. 任何接口字段在联调时与小红书实际响应不符 → 立即更新 src/services/xhs/selectors.ts
+>    并在 commit 信息中标注 [selectors-update]
+> 4. 每个 Task 完成后用对应 AC 编号自查；AC 全部通过 → Task 完成
+> 5. 涉及小红书接口的集成测试需要真实登录态，无登录态时跳过并标记 [needs-real-login]
+> 6. DeepSeek 相关任务可用 mock 完成单测，AC-026/AC-029/AC-030 必须真实 Key 验证
+```
+
+---
+
+*xhs-radar L3 v1.0 完整版 · idea-to-prd-v1 流程产出 · 2026-05-09*
