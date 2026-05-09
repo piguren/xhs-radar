@@ -5,3 +5,17 @@ release/
 .env
 .env.local
 *.log
+
+# build artifacts
+.crx-cache/
+.vite/
+
+# tsbuildinfo
+*.tsbuildinfo
+
+# editor
+.vscode/
+.idea/
+
+# test output
+coverage/

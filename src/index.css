@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+/* xhs-radar 视觉 Token（来自 docs/prd/xhs-radar-l3.md §6.1） */
+@theme {
+  /* 主色（小红书风格活力红） */
+  --color-brand-50:  #FFF1F3;
+  --color-brand-100: #FFE0E5;
+  --color-brand-300: #FF8092;
+  --color-brand-500: #FF2442;
+  --color-brand-600: #E61E3A;
+  --color-brand-700: #B81830;
+
+  /* 强调色（潜力 / 警示） */
+  --color-accent-500: #FF8C29;
+  --color-accent-600: #E5751F;
+
+  /* 中性灰阶 */
+  --color-neutral-0:   #FFFFFF;
+  --color-neutral-50:  #FAFAFA;
+  --color-neutral-100: #F5F5F5;
+  --color-neutral-200: #EBEBEB;
+  --color-neutral-300: #D4D4D4;
+  --color-neutral-500: #737373;
+  --color-neutral-700: #404040;
+  --color-neutral-900: #171717;
+
+  /* 状态色 */
+  --color-success-500: #16A34A;
+  --color-success-100: #DCFCE7;
+  --color-warning-500: #F59E0B;
+  --color-warning-100: #FEF3C7;
+  --color-error-500:   #DC2626;
+  --color-error-100:   #FEE2E2;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Microsoft YaHei", sans-serif;
+  background: var(--color-neutral-50);
+  color: var(--color-neutral-900);
+}
