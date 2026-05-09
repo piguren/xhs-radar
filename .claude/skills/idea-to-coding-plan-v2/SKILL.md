@@ -3,7 +3,7 @@ name: idea-to-coding-plan-v2
 description: 从模糊想法到可执行 Coding Plan 的端到端流程。四阶段：A 需求采集 / B 静态规格（L1+L2+L3 §1-10）/ C 可执行计划（writing-plans 格式）/ D 交接执行。Spec 与 Plan 双产物分离，互不污染。深度融合 superpowers 套件的行为塑造原则。
 ---
 
-> **版本：** v2.1（融合 superpowers 行为塑造精髓）
+> **版本：** v2.2（v2.1 + 首次端到端实施的实战陷阱蒸馏）
 > **适用：** 需要从产品想法走到可让 AI Agent 自动执行的 Coding Plan 的项目。
 
 ## 概述
@@ -28,6 +28,139 @@ description: 从模糊想法到可执行 Coding Plan 的端到端流程。四阶
 - 全部存入 GitHub `docs/`
 
 ---
+
+---
+
+# 🧪 Phase D 实战陷阱与铁律（来自首次端到端实施 2026-05）
+
+> 这一节是 v2.1 → v2.2 的关键升级。前面的方法论再完美，没有这些"操作层"的具体陷阱，实施 Agent 还是会反复踩坑。
+
+## 1. 跨层类型必须独立成 `src/types/`，不挂 store
+
+**踩过的坑：** L3 §1.4 把 `NoteRecord` 写在 `app/store/batchStore.ts` 命名空间下；但 `services/scoring/filter.ts` 也需要 `NoteRecord` → 形成 `services → app` 反向依赖，违反"形态无关"铁律。
+
+**铁律：**
+- 任何 ≥2 层用到的类型 → 抽到 `src/types/<domain>.ts`
+- `services/` 引用 `types/` ✅；`services/` 引用 `app/` ❌
+- L3 §1.4 写 State 类型时同步标注"是否跨层"，跨层即放 `types/`
+
+## 2. 占位文件铁律：被引用的资源必须先存在
+
+**踩过的坑：**
+- `manifest.json::web_accessible_resources` 引用 `interceptor_main.js`，但该文件是 T-061 才写的真实内容 → Phase 1.0 build 失败
+- `manifest.json::icons` 引用 PNG 文件，但项目还没设计图标 → build 失败
+
+**铁律：**
+- 任何被 manifest / config 引用的文件，**必须在第一次 build 之前先放占位**（哪怕是空 IIFE 或临时图标）
+- Plan 里 Phase 1.0 的最后一个 Task 应是"build 验证"，确保占位齐全
+- 占位文件加 `// 占位 — 真实实现见 T-XXX` 注释，避免被遗忘
+
+## 3. 每个 Phase 必须以"质量门"收尾
+
+**铁律（Plan 强制写进每个 Phase 末尾）：**
+```
+- [ ] pnpm typecheck   预期: 无错误
+- [ ] pnpm vitest run  预期: 全 pass
+- [ ] pnpm build       预期: dist 生成，无 ENOENT
+```
+任意一步失败 → 当前 Phase 不算完成，不许进下一 Phase。
+
+> 这条铁律比单 Task TDD 五步骤更高一阶 — 它防止 Phase 间集成回归。
+
+## 4. 浏览器扩展的"消息网格"模式（Messaging Mesh）
+
+**踩过的坑：** dashboard 想 fetch 小红书接口，但跨域 + 需要 cookie → 必须由 content script 在 xhs.com origin 下发起。链路：
+
+```
+Dashboard ──sendMessage──► Service Worker
+                                │
+                                tabs.sendMessage
+                                │
+                                ▼
+                         Content Script (ISOLATED world)
+                                │
+                                ├── fetch(同源 + cookie) ────► XHS API
+                                │
+                                └── injectScript ──► MAIN world IIFE
+                                                       │
+                                                       fetch hook
+                                                       │
+                                                       window.postMessage
+                                                       │
+                                                       ▼
+                                                 Content Script (回到 ISOLATED)
+                                                       │
+                                                       sendMessage
+                                                       │
+                                                       ▼
+                                                 Service Worker / Dashboard
+```
+
+**铁律：**
+- L3 §1.2 必须有这张图（如果项目是浏览器扩展）
+- 每条消息必须有命名常量（`'CONTENT_SCRIPT_FETCH'` 等），集中在 `src/types/messages.ts`
+- 链路任何一节都不能省（不能让 dashboard 直接 fetch 跨域接口，会被 CORS 卡）
+
+## 5. MAIN world IIFE 的硬约束
+
+**踩过的坑：** MAIN world 脚本需要劫持 `window.fetch`，但 MAIN world 不能 `import`，不能用 TS 路径别名，不能用 `chrome.*`。
+
+**铁律：**
+- MAIN world 文件只能是 `public/<name>.js`（plain JS IIFE）
+- 路径常量内联（不能从 `selectors.ts` import）
+- 自身用 `var` 变量 + IIFE 包裹防污染
+- 加双重注入防护：`if (window.__xxx_intercepted__) return;`
+- 与 content script 通信只能 `window.postMessage`
+- **不写 .ts 版本试图复用** — 会被 vite 当成模块打包，破坏 IIFE 形态
+
+## 6. 联调测试必须配套"诊断 UI"
+
+**踩过的坑：** T-069 是 manual integration test（必须真实小红书 + 登录），AI Agent 没法自动跑。如果只丢一句"请手动跑"，用户得在 service worker console 手敲消息。体验差到不会被执行。
+
+**铁律：**
+- 任何 manual integration Task 必须配一个临时的"诊断 UI"（按钮 + 显示捕获结果 + 复制按钮），让人 30 秒内能完成
+- 诊断 UI 可写在 popup 或 dashboard 中的隐藏入口
+- 诊断 UI 在主功能完成后**保留**到一期发布前（不要删，是排查工具）
+- 配套 Plan Task 的 step 包括"打开 popup → 点按钮 → 滚动 → 复制"具体动作
+
+## 7. 测试反模式与 happy-dom 注意点
+
+**踩过的坑：**
+- `screen.getByText(/explode/)` 失败：错误信息同时出现在 `<p>` 和 `<pre>` 里 → "Found multiple elements"
+- `chrome` 全局在 happy-dom 默认不存在 → 测试 chrome.* 的代码必须 `(global as any).chrome = {...}` 在 beforeEach
+- `vitest` 默认不带 jest-dom matchers → tests/setup.ts 必须 `import '@testing-library/jest-dom/vitest'`
+
+**铁律：**
+- 错误 / 状态文本可能多处出现 → 用 `getAllByText` 而非 `getByText`
+- 测 chrome.* 代码先在 `beforeEach` mock；推荐做 `tests/helpers/chrome-mock.ts` 共用
+- `tests/setup.ts` 加 jest-dom 导入
+
+## 8. 进度快照节奏（Continuous Execution 的细节）
+
+**Skill v2.1 §D.2.6 说"不要在 Task 间问'要继续吗'"**。这没错，但容易理解为"什么都不汇报"。
+
+**实战补丁：**
+- 每完成 1–2 个 Phase（不是 Task）→ 给一次进度快照（百分比 + 风险地图 + 接下来选项）
+- 快照不问"继续吗"，只汇报已完成 + 接下来 + 关键风险
+- 重大风险扫雷后（如 1.6 高风险通过单元测试）→ 强制做一次 checkpoint，不要直接吞下进 1.7
+- 长时间无进度（>5 min 单步骤无 commit）→ 简短说明在做什么，避免 silent
+
+## 9. Plan 自检升级（v2.2 新增 3 条）
+
+在原 §C.6 Plan 自检基础上加：
+
+- [ ] **依赖顺序审查：** 每个 Task N 的 imports 是否都来自 Task ≤ N？跨 Phase 的尤其要查。
+- [ ] **占位文件审查：** 每个 manifest/config 引用的资源是否在被引用前已有占位？
+- [ ] **质量门收尾：** 每个 Phase 末尾是否有 typecheck + vitest + build 三连？
+
+## 10. Plan 字段约定
+
+**踩过的坑：** Plan 写 `Files: Create: ...` 但没写"被哪个 Task 后续修改"，导致后续任务里说"修改 src/X.ts"时可能跟之前 Create 的版本冲突。
+
+**铁律：**
+- Files 段加上 `Modify: <path> by T-XXX, T-YYY` 注明所有后续修改方
+- 修改密集的文件（>5 次修改）应在文件顶部加 changelog 注释
+- Plan 末尾给一张 "File × Task" 矩阵，谁动谁建一目了然
 
 ---
 
@@ -608,6 +741,22 @@ human partner 让你执行 Plan 就是让你执行**全部**。
 ❌ 把"成熟项目"理解成泛读（必须 1–3 个最相似的精读）
 ❌ 抄整个项目结构不做形态适配
 
+## v2.2 实战陷阱违反（高频重灾区）
+
+❌ 跨层共享类型挂在 store 命名空间下（破坏分层）
+❌ manifest 引用的资源没有占位就 build（必 ENOENT 失败）
+❌ Phase 完成不跑 typecheck + build + vitest 三连质量门
+❌ 浏览器扩展项目 L3 §1.2 没有"消息网格图"
+❌ MAIN world 脚本写成 .ts 用 import / 路径别名（被打包成模块）
+❌ MAIN world 缺 `__xxx_intercepted__` 双重注入防护
+❌ Manual integration Task 没有配套诊断 UI
+❌ 错误文本可能多处出现却用 `getByText`（应用 `getAllByText`）
+❌ 测试用 chrome.* 但没在 beforeEach mock global.chrome
+❌ tests/setup.ts 漏 `@testing-library/jest-dom/vitest`
+❌ Continuous Execution 理解为"什么都不汇报"，>2 Phase 无进度快照
+❌ 高风险 Phase 扫雷后不做 checkpoint，直接吞进下一 Phase
+❌ Plan 里 Files 段没标注后续 Modify 方
+
 ---
 
 # 与 v1 的关键差异
@@ -640,4 +789,4 @@ human partner 让你执行 Plan 就是让你执行**全部**。
 
 ---
 
-*idea-to-coding-plan v2.1 · 基于 idea-to-prd-v1 + superpowers:writing-plans/test-driven-development/subagent-driven-development/executing-plans 深度融合 · 2026-05-09*
+*idea-to-coding-plan v2.2 · v2.1 + 首次端到端实施实战陷阱蒸馏（消息网格 / MAIN world / 诊断 UI / 质量门 / 类型分层 等 10 项铁律）· 2026-05-09*
