@@ -6,6 +6,9 @@ import { PoolMaxSelector } from '@/app/components/config/PoolMaxSelector';
 import { ApiKeyInput } from '@/app/components/config/ApiKeyInput';
 import { StartScrapeButton } from '@/app/components/config/StartScrapeButton';
 import { useToast } from '@/app/hooks/useToast';
+import { useConfigStore } from '@/app/store/configStore';
+import { useScrapeStore } from '@/app/store/scrapeStore';
+import type { StartScrapePayload } from '@/services/orchestrator/handle_start_scrape';
 
 /**
  * 配置 Tab — 对应 docs/prd/xhs-radar-l3.md §2.1 + AC-001~009
@@ -13,9 +16,44 @@ import { useToast } from '@/app/hooks/useToast';
 export function ConfigPage(): React.ReactElement {
   const toast = useToast();
 
-  // Phase 1.7 实现真正的抓取启动；先放 Toast 占位
   const onStart = (): void => {
-    toast({ type: 'info', message: '抓取主流程将在 Phase 1.7 完成（T-074）', durationMs: 4000 });
+    const cfg = useConfigStore.getState();
+    const batchId =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+
+    const payload: StartScrapePayload = {
+      batchId,
+      keywords: cfg.keywords,
+      timeWindow: cfg.timeWindow,
+      thresholds: { ces: cfg.cesThreshold, likeRatio: cfg.likeRatioThreshold },
+      candidatePoolMax: cfg.candidatePoolMax,
+      targetBombCount: cfg.targetBombCount,
+    };
+
+    useScrapeStore.getState().reset();
+    useScrapeStore.getState().setBatchId(batchId);
+    useScrapeStore.getState().setStatus('validating');
+
+    chrome.runtime.sendMessage({ kind: 'START_SCRAPE', payload }, (resp) => {
+      const lastErr = chrome.runtime.lastError;
+      if (lastErr) {
+        const lastErrMsg: string = lastErr.message ?? 'unknown';
+        useScrapeStore.getState().setStatus('failed');
+        useScrapeStore.getState().setError({ code: 'sw_unreachable', message: lastErrMsg });
+        toast({ type: 'error', message: `启动失败：${lastErrMsg}`, durationMs: 4000 });
+        return;
+      }
+      if (resp && resp.success === false) {
+        const errMsg: string = resp.error ?? 'unknown';
+        useScrapeStore.getState().setStatus('failed');
+        useScrapeStore.getState().setError({ code: 'orchestrator_error', message: errMsg });
+        toast({ type: 'error', message: `抓取失败：${errMsg}`, durationMs: 4000 });
+      }
+    });
+
+    toast({ type: 'info', message: `已启动抓取 · batch ${batchId.slice(0, 8)}`, durationMs: 3000 });
   };
 
   return (
