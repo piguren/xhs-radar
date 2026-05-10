@@ -27,15 +27,16 @@ export async function fetchUserFans(userId: string): Promise<number | null> {
     query: { target_user_id: userId },
   });
 
+  // 🔴 P0 #2: 失败路径不缓存。临时错误（限流 / network 抖动 / cookie 刷新瞬间）
+  // 缓存 null 会让该 userId 在整个 SW 生命周期内都拿不回 fans → likeToFansRatio
+  // 永远为 null → isBomb 永远 false，本该上榜的笔记被静默踢掉。
   if (!resp.success || !resp.data || resp.data.code !== 0) {
-    fanCache.set(userId, null);
     return null;
   }
 
   const interactions = resp.data?.data?.interactions ?? [];
   const fansEntry = interactions.find((i) => i.type === 'fans');
   if (!fansEntry) {
-    fanCache.set(userId, null);
     return null;
   }
 

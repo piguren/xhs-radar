@@ -76,6 +76,14 @@ export async function handleStartScrape(p: StartScrapePayload): Promise<void> {
     }
     const tabId = xhsTab.id;
 
+    // 🔴 P0 #1: chrome.tabs.create resolve 时 tab 仍在 loading，content script 可能未注入。
+    // 慢网/冷启动下首次 BEGIN_INTERCEPT 会被 reject（"Receiving end does not exist"）→ 整个 batch fail。
+    // 先轮询 PING 直到 CS 就绪，与 NAVIGATE_KEYWORD 后的处理对称。
+    const ready = await waitForContentScript(tabId);
+    if (!ready) {
+      fail();
+      return;
+    }
     await chrome.tabs.sendMessage(tabId, { kind: 'BEGIN_INTERCEPT', batchId: p.batchId });
     await sleep(MAIN_INJECT_DELAY_MS);
 

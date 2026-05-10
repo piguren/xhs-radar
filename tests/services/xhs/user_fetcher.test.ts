@@ -53,4 +53,31 @@ describe('fetchUserFans (TC A3)', () => {
     sendMessageMock.mockImplementation((_msg, cb) => cb({ success: false, error: 'no tab' }));
     expect(await fetchUserFans('u1')).toBeNull();
   });
+
+  // 🔴 P0 #2: failure must NOT be cached — transient errors should retry next call
+  it('does not cache failure: retries on next call after relay failure', async () => {
+    sendMessageMock
+      .mockImplementationOnce((_msg, cb) => cb({ success: false, error: 'transient' }))
+      .mockImplementationOnce((_msg, cb) =>
+        cb({ success: true, data: { code: 0, data: { interactions: [{ type: 'fans', count: '500' }] } } }),
+      );
+
+    expect(await fetchUserFans('u1')).toBeNull();
+    expect(await fetchUserFans('u1')).toBe(500);
+    expect(sendMessageMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not cache failure: retries when interactions list is missing fans entry', async () => {
+    sendMessageMock
+      .mockImplementationOnce((_msg, cb) =>
+        cb({ success: true, data: { code: 0, data: { interactions: [] } } }),
+      )
+      .mockImplementationOnce((_msg, cb) =>
+        cb({ success: true, data: { code: 0, data: { interactions: [{ type: 'fans', count: '42' }] } } }),
+      );
+
+    expect(await fetchUserFans('u1')).toBeNull();
+    expect(await fetchUserFans('u1')).toBe(42);
+    expect(sendMessageMock).toHaveBeenCalledTimes(2);
+  });
 });
