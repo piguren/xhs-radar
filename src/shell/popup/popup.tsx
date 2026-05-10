@@ -26,7 +26,9 @@ function Popup(): React.ReactElement {
   }, [diagStatus]);
 
   const openDashboard = (): void => {
-    chrome.tabs.create({ url: chrome.runtime.getURL('dashboard.html') });
+    // 必须打开 dist/public/dashboard.html：Vite 会把 public/ 里未改写的 HTML 同步拷到 dist/ 根目录，
+    // 根上的 dashboard.html 仍指向 /src/.../*.tsx，在扩展里会 404。
+    chrome.tabs.create({ url: chrome.runtime.getURL('public/dashboard.html') });
     window.close();
   };
 
