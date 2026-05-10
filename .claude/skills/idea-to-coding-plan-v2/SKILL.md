@@ -3,7 +3,7 @@ name: idea-to-coding-plan-v2
 description: 从模糊想法到可执行 Coding Plan 的端到端流程。四阶段：A 需求采集 / B 静态规格（L1+L2+L3 §1-10）/ C 可执行计划（writing-plans 格式）/ D 交接执行。Spec 与 Plan 双产物分离，互不污染。深度融合 superpowers 套件的行为塑造原则。
 ---
 
-> **版本：** v2.2（v2.1 + 首次端到端实施的实战陷阱蒸馏）
+> **版本：** v2.3（v2.2 + 真实联调暴露的契约偏差铁律 / 来自 xhs-radar T-069）
 > **适用：** 需要从产品想法走到可让 AI Agent 自动执行的 Coding Plan 的项目。
 
 ## 概述
@@ -161,6 +161,42 @@ Dashboard ──sendMessage──► Service Worker
 - Files 段加上 `Modify: <path> by T-XXX, T-YYY` 注明所有后续修改方
 - 修改密集的文件（>5 次修改）应在文件顶部加 changelog 注释
 - Plan 末尾给一张 "File × Task" 矩阵，谁动谁建一目了然
+
+## 11. Schema 真相来源优先级 `[universal]`
+
+**踩过的坑：** xhs-radar Phase 1.6 写 search 接口 schema 时参考了 7 个开源项目的 README/sample/源码，全部用 `share_count`。Phase 1.6 末尾真实联调（T-069）才发现线上字段是 `shared_count`（带 d）—— 21 条响应里 21 条都丢失分享数。同一份响应还暴露 `corner_tag_info[].text`（含 publish_time）完全没在任何 ref README 里出现，导致 NoteRecord.time 一直硬编码 0。
+
+**铁律：** Schema 来源优先级 = **真实响应 > 官方文档 > 参考项目源代码 > 参考项目 README**。
+
+**正确做法：**
+- L3 §3 Schema 章节必须配"真实响应来源"声明：抓取入口 / 抓取日期 / 是否亲自验证
+- 写 schema 第一步：要求自己/用户抓 1 份真实响应（或在 ref 项目里翻已抓样例文件，不是文档）
+- ref README/sample 字段名只能作为"提示"，不能作为"真相"——任何 ref 都可能因接口改名而过时
+- 多个 ref 项目字段一致也不构成 schema 真相，只能延后被真实响应推翻的概率
+
+## 12. 被动拦截类项目：fixture 早存，集成测试不拖到 Phase 末 `[browser-ext]`
+
+**踩过的坑：** xhs-radar Phase 1.6 把"真实联调"安排成最后一个 Task（T-069），search_parser（T-064）写完后到 Phase 末才发现 schema 错。中段写过的 9 个边界 case TC（A1-T1~T9）全部基于错 fixture——9 个测试都通过但都在错的契约上"绿"。
+
+**铁律：** 任何依赖外部接口响应的项目，必须在 parser **第一个 Task 完成前**存一份真实响应 fixture，集成测试在 Phase 中段就跑，不拖到 Phase 末。
+
+**正确做法：**
+- Plan 的第一个解析类 Task（T-XX0）之前 / 同期安排 "fixture capture" Task：手动抓 1 份真实响应存 `test-fixtures/`
+- 集成测试随 fixture 即写：`real_<api>_response.test.ts`，断言"长度 > 0 + 关键字段非默认值"
+- 后续每个 parser Task 都跑这个集成测试，错就立刻暴露而不是等到 Phase 末
+- "fixture capture" Task 暂时拿不到真数据可 skip，但 Task 必须存在；它的存在会迫使节奏重排
+
+## 13. 硬编码 0/null/'' 兜底是契约偏差的伪装 `[universal]`
+
+**踩过的坑：** xhs-radar `search_parser.ts` 写过 `time: 0`、`shareCount: parseCount(ii.share_count)`（字段名错时返回 0）、`title: card.display_title ?? ''`。这些"安全兜底"让 TS 类型不报错、单测全过，真实响应跑过来就是全 0 数据。直到加"shareCount > 0 + time > 0"的契约断言才暴露契约偏差。
+
+**铁律：** 凡是 Domain 类型（NoteRecord 等）上"应当能从外部解析出来"的字段，必须有契约测试断言它**非默认值**（用真实 fixture 驱动）。
+
+**正确做法：**
+- L3 §4 测试章节给每个"应当被解析"的字段定一条"非默认值"断言（如 `expect(time).toBeGreaterThan(0)`）
+- 解析器集成测试必须断言"至少一条字段非 0/非 null/非空串"，构造 fixture 不算
+- 任何 `?? 0` / `?? null` / `?? ''` / `?? 0n` 兜底都要回答："如果真走到这一支意味着什么？"——若意味着契约偏差就要有告警/测试断言
+- 单测可以用任意 fixture，**集成测试必须用真实 fixture 驱动这些"非默认值"断言**
 
 ---
 
@@ -757,6 +793,16 @@ human partner 让你执行 Plan 就是让你执行**全部**。
 ❌ 高风险 Phase 扫雷后不做 checkpoint，直接吞进下一 Phase
 ❌ Plan 里 Files 段没标注后续 Modify 方
 
+## v2.3 实战陷阱违反（契约偏差识别）
+
+❌ Schema 字段名只参考 ref 项目 README/源码，不验证真实响应（§11）
+❌ L3 §3 Schema 章节没有"真实响应来源 / 抓取日期"声明（§11）
+❌ 把"真实联调"Task 安排到 Phase 最后一个位置（§12）
+❌ 解析器测试只跑构造的 fixture，不跑真实响应 fixture（§12）
+❌ Domain 字段用 `?? 0` / `?? null` / `?? ''` 兜底但没有契约测试断言它非默认值（§13）
+❌ 集成测试只断言 "length > 0 / 字段类型对" 不断言 "字段值 ≠ 默认值"（§13）
+❌ 蒸馏触发条件命中（高风险 Phase 后）但默认继续下一 Task 而不做蒸馏（meta，写到 CLAUDE.md）
+
 ---
 
 # 与 v1 的关键差异
@@ -790,3 +836,5 @@ human partner 让你执行 Plan 就是让你执行**全部**。
 ---
 
 *idea-to-coding-plan v2.2 · v2.1 + 首次端到端实施实战陷阱蒸馏（消息网格 / MAIN world / 诊断 UI / 质量门 / 类型分层 等 10 项铁律）· 2026-05-09*
+
+*idea-to-coding-plan v2.3 · v2.2 + 契约偏差识别（Schema 真相来源优先级 / 早存真实 fixture / 兜底是契约偏差伪装 共 3 项铁律 + 7 条 Red Flags）· 蒸馏自 xhs-radar T-069 · 2026-05-10*
