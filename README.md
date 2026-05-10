@@ -2,12 +2,26 @@
 
 > Chrome 扩展 · 在小红书任意赛道发现"爆款笔记" + AI 辅助选题
 
-![status](https://img.shields.io/badge/status-Phase_1.7_alpha-orange)
+![status](https://img.shields.io/badge/status-Phase_1.7_in_progress-orange)
 ![license](https://img.shields.io/badge/license-未定-lightgrey)
 
-## ⚠️ 当前状态：alpha，还没人在真实浏览器里跑通过
+## ⚠️ 当前状态：Phase 1.7 进行中
 
-代码层面 Phase 1.0–1.7 完成，**158 个测试 / typecheck / build 全绿**，但**端到端浏览器联调（T-077）尚未完成**。可能遇到以下 3 个我们已识别但未在浏览器验证的问题：
+**抓取主流程将在 Phase 1.7 完成（T-074）**，目前代码已实现并通过 158 个测试 / typecheck / build 三连质量门，但**端到端浏览器联调（T-077）尚未完成** —— 也就是说 Phase 1.7 还**没有真正"完成"**，只是代码写完了。
+
+```
+Phase 1.7 范围（抓取主流程，T-070 ~ T-077）
+├── T-070  状态机                                  ✅ 实现 + 单测
+├── T-071  候选池                                  ✅ 实现 + 单测
+├── T-072  进度发射器                              ✅ 实现 + 单测
+├── T-073  Service Worker 路由                     ✅ 实现 + 单测
+├── T-074  handleStartScrape（抓取主流程）         ✅ 实现 + 单测
+├── T-075  useScrapeListener hook                  ✅ 实现 + 单测
+├── T-076  BottomStatusBar 组件                    ✅ 实现 + 单测
+└── T-077  浏览器手动联调 ← 这一步通过 Phase 1.7 才算完成   ⏳ 等待
+```
+
+T-077 待跑，可能遇到以下 3 个**已识别但未在浏览器验证**的问题：
 
 1. 多关键词抓取时切换关键词后短暂收不到数据（首次刷新后 ~600ms）
 2. 详情接口 SW ↔ content script 中转的真实跨 tab 时序未验证
@@ -20,6 +34,18 @@
 ## 这是什么
 
 在小红书搜索某个关键词时，自动捕获后端返回的笔记数据（搜索接口 + 详情接口），按你设的阈值筛"爆款"（高互动、高点赞粉丝比、近时间窗口），并支持用 DeepSeek API 辅助生成选题建议。
+
+**Phase 1 路线图：**
+
+| Phase | 内容 | 状态 |
+|---|---|---|
+| 1.0–1.5 | 脚手架 / chrome services / scoring / stores / 配置 Tab UI | ✅ 完成 |
+| 1.6 | 小红书接口拦截层（schema / parser / interceptor） | ✅ 完成 |
+| **1.7** | **抓取主流程（T-074）+ 状态条 UI** | ⏳ 代码完成，等 T-077 浏览器联调 |
+| 1.8 | 展示 Tab（爆款列表 + 详情面板） | 🟡 待做 |
+| 1.9 | AI 选题（DeepSeek BYOK） | 🟡 待做 |
+| 1.10 | 收藏 / 历史 | 🟡 待做 |
+| 1.11–1.14 | 弹窗 / 路由 / 测试 / 构建打磨 | 🟡 待做 |
 
 **核心特点：**
 
