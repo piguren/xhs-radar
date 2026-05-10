@@ -3,7 +3,7 @@ name: idea-to-coding-plan-v2
 description: 从模糊想法到可执行 Coding Plan 的端到端流程。四阶段：A 需求采集 / B 静态规格（L1+L2+L3 §1-10）/ C 可执行计划（writing-plans 格式）/ D 交接执行。Spec 与 Plan 双产物分离，互不污染。深度融合 superpowers 套件的行为塑造原则。
 ---
 
-> **版本：** v2.3（v2.2 + 真实联调暴露的契约偏差铁律 / 来自 xhs-radar T-069）
+> **版本：** v2.4（v2.3 + 高风险 Task 实施前的契约扫雷 / 浏览器扩展 reload state 铁律 / 来自 xhs-radar Phase 1.7 + T-074）
 > **适用：** 需要从产品想法走到可让 AI Agent 自动执行的 Coding Plan 的项目。
 
 ## 概述
@@ -197,6 +197,47 @@ Dashboard ──sendMessage──► Service Worker
 - 解析器集成测试必须断言"至少一条字段非 0/非 null/非空串"，构造 fixture 不算
 - 任何 `?? 0` / `?? null` / `?? ''` / `?? 0n` 兜底都要回答："如果真走到这一支意味着什么？"——若意味着契约偏差就要有告警/测试断言
 - 单测可以用任意 fixture，**集成测试必须用真实 fixture 驱动这些"非默认值"断言**
+
+## 14. Plan 详写不能替代 Skill 应用 `[meta]`
+
+**踩过的坑：** xhs-radar Phase 1.7 启动后，因为 Plan 已经把 T-070~T-076 都详写成 5 步骤 TDD 完整代码，我陷入"按文档执行"的惯性 —— 跳过了 ref 项目盘点、跳过了"高风险 Phase 后立刻蒸馏"、跳过了 v2.3 §11 的"真实响应优先"自检。直到用户问"你用 Skill 了吗"才意识到。Plan 是**操作层**，Skill 是**元层**；两者必须并行作用，不能用 Plan 的存在合理化跳过 Skill。
+
+**铁律：** Skill 不是写完一次就结束的资料，是**每个阶段、每个高风险 Task 之前都要主动调用一次**的"决策助手"。
+
+**正确做法：**
+- 每个 Phase 启动前默认问自己："这个 Phase 触发了 Skill 哪几条规则？"
+- 每个高风险 Task（标 🔴）实施前默认调用一次 `Skill` 工具，读相关章节 + 触发条件
+- Plan 文档与 Skill 冲突时，Skill 优先（Plan 写得早，Skill 是迭代沉淀的最新经验）
+- Plan 的"5 步骤 TDD 代码块"是**实施模板**，不是"按这个抄就完事"——每步前要问"还有什么 Skill 提醒我做"
+- 用户提示"你用 Skill 了吗"是 Red Flag，意味着我已经至少漏了一次
+
+## 15. 高风险 Task 前的"契约链路扫雷" `[universal]`
+
+**踩过的坑：** xhs-radar T-074 是 Phase 1.7 最复杂的 Task（编排 6 个子模块）。Plan 写得详尽，但用户让我先"验证"。我读了 MAIN-world / content-script / SW 三层代码，并写了一个 integration test 模拟整条消息链 —— 在写 T-074 一行代码之前就发现了 3 个隐藏 bug：(a) NAVIGATE_KEYWORD 整页刷新会重置 captureBatchId；(b) NOTES_CAPTURED 当前走 diag 不进 pipeline；(c) MAIN 注入是 lazy。这 3 个 bug 任一在真实浏览器里只会以"数据莫名为空"的形式出现，调试成本极高。
+
+**铁律：** 凡是"编排型"或"跨进程消息"或"跨层调用"的高风险 Task，**实施前必做契约扫雷三连**：
+1. 读完所有相关层的现有代码（不只是被改的层）
+2. 用 mock 写一个端到端 integration test（covers contract 但不真实 IO）
+3. 列出 ≥3 个"我现在能想到的可能 bug"，逐一在测试或代码里验证
+
+**正确做法：**
+- Plan 的 5 步 TDD 之前，先做 "Step 0：契约链路扫雷"
+- 扫雷产物：integration test 文件（哪怕只 1 个 it），列出已知 issues 的注释清单
+- 整理出的 bug 必须在主 Task 的实现里"显式 fix"，注释引用扫雷文件 + 行号
+- 千万不要"信任 plan 写的就是对的"——plan 写于实施前，实施期间环境会变
+
+## 16. 浏览器扩展 content script 模块级 state 跨 reload 不可靠 `[browser-ext]`
+
+**踩过的坑：** xhs-radar `xhs_interceptor.ts` 用模块顶层变量 `let captureBatchId: string | null = null` 维护"当前是否在拦截"。第一次 BEGIN_INTERCEPT 后正常工作。但 SW 后续发 NAVIGATE_KEYWORD 让页面跳转 → content script 被新的 page navigation 重新注入 → captureBatchId 重置成 null → guard 把所有后续 CAPTURED 全 drop 掉。表现：第 2 个关键词起完全没数据。
+
+**铁律：** 浏览器扩展 content script 的**模块级变量在 SPA 路由切换时可能保留，但在 full page reload（包括 location.href 赋值）时一定丢失**。任何"跨页面/关键词的状态"必须用 chrome.storage.session（或 chrome.storage.local + ts 时间戳）持久化。
+
+**正确做法：**
+- L3 §1.2 "消息网格图" 必须明确标注每条消息后续是否触发 reload（NAVIGATE / location.href / form submit / a target=_self）
+- content script 顶层 `let foo = ...` 的状态必须配套一条单测/集成测试断言"reload 后 foo 重置"
+- SW 编排端对每条 NAVIGATE 类消息后续必须"等一个 reload 时长 + 重发 setup"
+- 单测无法发现这种 reload bug——必须靠 integration test 或手动浏览器联调
+- 对应的测试坑：happy-dom 里 `window` 跨 it 不重建，模块级监听器累积（用 sequential 测试或显式 cleanup）
 
 ---
 
@@ -803,6 +844,16 @@ human partner 让你执行 Plan 就是让你执行**全部**。
 ❌ 集成测试只断言 "length > 0 / 字段类型对" 不断言 "字段值 ≠ 默认值"（§13）
 ❌ 蒸馏触发条件命中（高风险 Phase 后）但默认继续下一 Task 而不做蒸馏（meta，写到 CLAUDE.md）
 
+## v2.4 实战陷阱违反（Plan/Skill 协调 + 高风险扫雷）
+
+❌ 因为 Plan 写得详细就跳过 Skill 调用 / ref 盘点 / 通用性审计（§14）
+❌ 整个会话不调用 Skill 工具一次，只机械执行 plan（§14 — 用户问"你用 Skill 了吗"=已漏一次）
+❌ 高风险 Task（🔴 标记）直接进入 5 步 TDD，没做"Step 0 契约链路扫雷"（§15）
+❌ 编排型 / 跨进程 / 跨层 Task 没有 mock-driven integration test 配套（§15）
+❌ 浏览器扩展 content script 用模块级 `let foo = ...` 持久化跨页面状态（§16）
+❌ NAVIGATE / location.href / form submit 后没"等 reload + 重发 setup"（§16）
+❌ L3 §1.2 消息网格图没标注哪些消息会触发 page reload（§16）
+
 ---
 
 # 与 v1 的关键差异
@@ -838,3 +889,5 @@ human partner 让你执行 Plan 就是让你执行**全部**。
 *idea-to-coding-plan v2.2 · v2.1 + 首次端到端实施实战陷阱蒸馏（消息网格 / MAIN world / 诊断 UI / 质量门 / 类型分层 等 10 项铁律）· 2026-05-09*
 
 *idea-to-coding-plan v2.3 · v2.2 + 契约偏差识别（Schema 真相来源优先级 / 早存真实 fixture / 兜底是契约偏差伪装 共 3 项铁律 + 7 条 Red Flags）· 蒸馏自 xhs-radar T-069 · 2026-05-10*
+
+*idea-to-coding-plan v2.4 · v2.3 + Plan/Skill 协调 + 高风险扫雷（Plan ≠ Skill / 实施前契约链路扫雷 / 浏览器扩展 reload state 不可靠 共 3 项铁律 + 7 条 Red Flags）· 蒸馏自 xhs-radar Phase 1.7 + T-074 验证 · 2026-05-10*
