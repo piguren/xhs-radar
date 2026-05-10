@@ -3,7 +3,7 @@ name: idea-to-coding-plan-v2
 description: 从模糊想法到可执行 Coding Plan 的端到端流程。四阶段：A 需求采集 / B 静态规格（L1+L2+L3 §1-10）/ C 可执行计划（writing-plans 格式）/ D 交接执行。Spec 与 Plan 双产物分离，互不污染。深度融合 superpowers 套件的行为塑造原则。
 ---
 
-> **版本：** v2.4（v2.3 + 高风险 Task 实施前的契约扫雷 / 浏览器扩展 reload state 铁律 / 来自 xhs-radar Phase 1.7 + T-074）
+> **版本：** v2.5（v2.4 + bug 修复元方法论：症状 ≠ 根因 / 验证语言 / 已写规则主动调用 / 来自 xhs-radar dashboard wiring 半成品交付返工）
 > **适用：** 需要从产品想法走到可让 AI Agent 自动执行的 Coding Plan 的项目。
 
 ## 概述
@@ -238,6 +238,46 @@ Dashboard ──sendMessage──► Service Worker
 - SW 编排端对每条 NAVIGATE 类消息后续必须"等一个 reload 时长 + 重发 setup"
 - 单测无法发现这种 reload bug——必须靠 integration test 或手动浏览器联调
 - 对应的测试坑：happy-dom 里 `window` 跨 it 不重建，模块级监听器累积（用 sequential 测试或显式 cleanup）
+
+## 17. 症状定位 ≠ 根因定位：bug 修复前先画端到端链路 `[universal]`
+
+**踩过的坑：** xhs-radar dashboard 显示占位文案 "抓取主流程将在 Phase 1.7 完成（T-074）"。我 grep 到 `ConfigPage.tsx:18` 那行字面量占位 Toast，立刻把它当根因，改完就声明修复完成。但实际链路上还有 3 处断点（`useScrapeListener` 写本地 state 不写 store / `BottomStatusBar` 没在 App.tsx mount / `useScrapeStore.setStatus/updateProgress` 没人调用）—— 用户追问"再审查一下"我才发现。结果是返工：第一次只修了链路的发起端，进度回流和渲染整段还是断的，dashboard 还是会"显示静止"。
+
+**铁律：** 症状（"X 不工作"）报告 → **必须先画端到端链路**（每一段：谁发、谁收、谁写状态、谁渲染）→ 找出**所有**断点 → 再下手。看到第一个跟 X 沾边的明显 bug 就开干 = 锚定偏差 = 半成品交付。
+
+**正确做法：**
+- 收到症状报告，第一动作不是 grep 关键字而是**列链路**：发起端 → 跨进程通道 → 接收端 → 状态写入 → UI 渲染。每一段问"谁负责？mount 了吗？被调用了吗？"
+- 浏览器扩展项目复用 L3 §1.2 的"消息网格图"作为审查 checklist，逐条核对当前代码是否仍然两端都接通
+- "找到一个 bug"和"找到所有 bug"是两件事；只有列完链路再回头看，才能判断刚找到的那个是不是唯一断点
+- 对消息广播型链路（`chrome.runtime.sendMessage` / EventEmitter / pub-sub），尤其要核查"是否有人订阅"——sender 不会在没有 subscriber 时报错，会静默丢弃
+- 每次"看到第一个解释就停下"前，强制问一句反问："如果只修这个，剩下的链路足够把症状推到正常吗？"——回答不出来就继续往下查
+
+## 18. "三连质量门通过"≠ 修好：端到端能力的验证语言 `[universal]`
+
+**踩过的坑：** 修完 ConfigPage 占位 Toast 后我跑 typecheck / 158 单测 / build 全过，立刻报告"修复完成"。但这三样**不可能发现** dashboard 链路断开 —— 没有任何端到端测试覆盖"SW 发 SCRAPE_PROGRESS → store 更新 → BottomStatusBar 渲染"这条链。我把"没有失败信号"当成了"成功信号"，给了用户错误的"已修好"信心。
+
+**铁律：** 单测 / typecheck / build 通过**不是修好的证据，只是没新增编译/单元回归**。声明"修好了"前必须能回答："**哪个测试 / 哪次浏览器交互能证明端到端行为已恢复？**"——回答不出，就只能说"修了某段，端到端待验证"。
+
+**正确做法：**
+- 改动前先想清楚"这次 fix 应该让什么端到端行为发生变化"，并列出**至少一个**能观察到该变化的验证手段（集成测试 / 手动点击 / fixture 回放）
+- 若该验证不存在，先写 / 先标"unverified"，再开始改实现 —— 不要修完才发现没法验证
+- 报告交付时用**分层措辞**：
+  - ✅"已修复并验证"：仅当端到端验证已跑过
+  - 🟡"修了 X 段，端到端待你浏览器验收（unverified）"：仅有单测/typecheck/build 通过
+  - ❌不要用"三连质量门通过"做"修好了"的论据 —— 句子合法但语义错位
+- "✅ 三连质量门通过"放在改动总结里**只能描述代码层面无回归**，不能用作"症状已恢复"的证据
+
+## 19. CLAUDE.md / Skill 已有规则必须在每次决策点主动调用 `[meta]`
+
+**踩过的坑：** 工作区 CLAUDE.md 写着"浏览器扩展项目 L3 §1.2 必须画消息网格图（dashboard ↔ SW ↔ content script ↔ MAIN world）"——这条规则的存在本身就是为了防止"半接通"。但 dashboard 静止那次审查我没把这张图重新走一遍，所以 SW→dashboard 这一段断点根本没进我视野。规则在记忆里、没在审查时被调用 = 等于不存在。
+
+**铁律：** 工作区 CLAUDE.md / Skill 的现有规则**不会因为它们写在那里就自动生效**。每次进入新决策点（开始审 bug / 开始改方案 / 开始下结论）必须主动检索一次"这个场景命中哪几条已有规则？"——遗漏一次 = 这次会话白学了那条规则。
+
+**正确做法：**
+- 每次进入"症状审查 / 实施 / 结论交付"三类决策点之一，强制内省一遍：CLAUDE.md / 当前 Skill 是否有针对该场景的规则？写下命中的条目编号
+- 浏览器扩展项目的所有 bug 审查必须把 L3 §1.2 消息网格图重走一遍 —— 这是"已有规则"的一次具体调用
+- 若发现某条规则**应该被调用却没被调用**，本次会话至少再多调用 1 次同类型 trigger（比如下一次审查再走一次网格图，校准习惯）
+- 用户说"你用 Skill 了吗 / 你查 CLAUDE.md 了吗" = Red Flag，意味着我已经至少漏了一次（与 §14 同型 — 此处是"已写规则不调用"，§14 是"Skill 工具不调用"）
 
 ---
 
@@ -854,6 +894,18 @@ human partner 让你执行 Plan 就是让你执行**全部**。
 ❌ NAVIGATE / location.href / form submit 后没"等 reload + 重发 setup"（§16）
 ❌ L3 §1.2 消息网格图没标注哪些消息会触发 page reload（§16）
 
+## v2.5 实战陷阱违反（症状定位 / 验证语言 / 已有规则调用）
+
+❌ 收到症状报告（"X 不工作"）grep 到第一个明显 bug 就开干，不先画端到端链路（§17）
+❌ 修完后没回头核查"剩下的链路是否足够把症状推到正常"（§17）
+❌ 消息广播型链路（chrome.runtime.sendMessage / pub-sub）只查 sender 不查 subscriber（§17）
+❌ 用 typecheck / 单测 / build 全过当作"端到端修好了"的证据（§18）
+❌ 改动前没列出"哪个测试 / 哪次手动交互能证明症状已恢复"，事后没法验证（§18）
+❌ 交付措辞用 "✅ 三连质量门通过"暗示已修好，未明确标 unverified（§18）
+❌ 进入审查 / 实施 / 结论决策点没主动检索 CLAUDE.md / Skill 已有规则（§19）
+❌ 浏览器扩展 bug 审查没重走一遍 L3 §1.2 消息网格图（§19）
+❌ 用户问"你用 Skill 了吗 / 你查 CLAUDE.md 了吗" = 已漏一次的 Red Flag（§19，与 §14 同型）
+
 ---
 
 # 与 v1 的关键差异
@@ -891,3 +943,5 @@ human partner 让你执行 Plan 就是让你执行**全部**。
 *idea-to-coding-plan v2.3 · v2.2 + 契约偏差识别（Schema 真相来源优先级 / 早存真实 fixture / 兜底是契约偏差伪装 共 3 项铁律 + 7 条 Red Flags）· 蒸馏自 xhs-radar T-069 · 2026-05-10*
 
 *idea-to-coding-plan v2.4 · v2.3 + Plan/Skill 协调 + 高风险扫雷（Plan ≠ Skill / 实施前契约链路扫雷 / 浏览器扩展 reload state 不可靠 共 3 项铁律 + 7 条 Red Flags）· 蒸馏自 xhs-radar Phase 1.7 + T-074 验证 · 2026-05-10*
+
+*idea-to-coding-plan v2.5 · v2.4 + bug 修复元方法论（症状 ≠ 根因端到端链路扫描 / "三连质量门通过"≠ 修好的验证语言 / 已写规则必须主动调用 共 3 项铁律 + 9 条 Red Flags）· 蒸馏自 xhs-radar dashboard wiring 半成品交付返工 · 2026-05-10*
