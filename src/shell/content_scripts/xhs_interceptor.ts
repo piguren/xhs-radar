@@ -17,11 +17,17 @@ interface CapturedMsg {
 let captureBatchId: string | null = null;
 let mainScriptInjected = false;
 
-function injectMainWorldHook(): void {
-  if (mainScriptInjected) return;
+function injectMainWorldHook(onReady: () => void): void {
+  if (mainScriptInjected) {
+    onReady();
+    return;
+  }
   const script = document.createElement('script');
   script.src = chrome.runtime.getURL('interceptor_main.js');
-  script.onload = () => script.remove();
+  script.onload = () => {
+    script.remove();
+    onReady();
+  };
   (document.head ?? document.documentElement).appendChild(script);
   mainScriptInjected = true;
 }
@@ -65,9 +71,15 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
   if (msg?.kind === 'BEGIN_INTERCEPT') {
     captureBatchId = msg.batchId;
-    injectMainWorldHook();
-    sendResponse({ ok: true });
-    return false;
+    // 🟠 P1 #3: script 加载是异步的，必须 onload 后再 ack。
+    // 已注入则同步 ack（onReady 立即调用 sendResponse → return false）；
+    // 首次注入需等 onload → return true 保持 sendResponse 通道。
+    if (mainScriptInjected) {
+      injectMainWorldHook(() => sendResponse({ ok: true }));
+      return false;
+    }
+    injectMainWorldHook(() => sendResponse({ ok: true }));
+    return true;
   }
   if (msg?.kind === 'END_INTERCEPT') {
     captureBatchId = null;

@@ -15,9 +15,25 @@ export type DetailFetchOutcome =
   | { outcome: 'invalid_args' }
   | { outcome: 'failed'; reason: string };
 
+interface NoteTag {
+  type: string;
+  name: string;
+  id?: string;
+}
+
+interface FeedNoteCard {
+  desc?: string;
+  time?: number;
+  tag_list?: NoteTag[];
+}
+
 interface RelayResponse {
   success: boolean;
-  data?: { code: number; data?: { items: Array<{ note_card?: { desc?: string; time?: number; tag_list?: any[] } }> }; msg?: string };
+  data?: {
+    code: number;
+    data?: { items: Array<{ note_card?: FeedNoteCard }> };
+    msg?: string;
+  };
   error?: string;
 }
 
@@ -63,6 +79,6 @@ export async function fetchNoteDetail(
     outcome: 'success',
     desc: card.desc ?? '',
     time: card.time ?? 0,
-    tagList: (card.tag_list ?? []) as Array<{ type: string; name: string; id?: string }>,
+    tagList: card.tag_list ?? [],
   };
 }

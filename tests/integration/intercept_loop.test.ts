@@ -77,9 +77,12 @@ describe('intercept loop contract (T-073 verification before T-074)', () => {
     ).toHaveLength(0);
 
     // Phase 2: BEGIN_INTERCEPT then dispatch real fixture
+    // P1 #3: BEGIN_INTERCEPT 现在是异步握手 — sendResponse 直到 script.onload 才触发，
+    // happy-dom 下 chrome-extension URL fetch 失败 onload 不会触发，因此这里不再断言
+    // sendResponse 调用。captureBatchId 是同步设置的，后面 NOTES_CAPTURED 验证就是
+    // 该握手生效的最终证据。专门的 onload 时序断言见 tests/shell/content_scripts/xhs_interceptor.test.ts。
     const sendResponse = vi.fn();
     cs.onMessage[0]({ kind: 'BEGIN_INTERCEPT', batchId: 'btch_test' }, {}, sendResponse);
-    expect(sendResponse).toHaveBeenCalledWith({ ok: true });
 
     const fixture = JSON.parse(readFileSync(FIXTURE_PATH, 'utf-8'));
     dispatchCaptured('search', fixture);
