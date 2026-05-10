@@ -59,6 +59,10 @@ async function relayFetch(
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg?.kind === 'PING') {
+    sendResponse({ pong: true });
+    return false;
+  }
   if (msg?.kind === 'BEGIN_INTERCEPT') {
     captureBatchId = msg.batchId;
     injectMainWorldHook();

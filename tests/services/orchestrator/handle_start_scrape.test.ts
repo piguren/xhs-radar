@@ -24,7 +24,10 @@ describe('handleStartScrape (T-074)', () => {
       },
       tabs: {
         create: vi.fn(async () => ({ id: 1 })),
-        sendMessage: vi.fn(async () => undefined),
+        sendMessage: vi.fn(async (_tabId: number, m: any) => {
+          if (m?.kind === 'PING') return { pong: true };
+          return undefined;
+        }),
       },
       storage: { local: { set: vi.fn(async () => undefined) } },
     };
@@ -104,6 +107,99 @@ describe('handleStartScrape (T-074)', () => {
       (c: any) => c[1]?.kind === 'BEGIN_INTERCEPT',
     );
     expect(beginCalls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('🟠 P1.2: waits for content-script PING ack after NAVIGATE_KEYWORD before re-arming', async () => {
+    // 模拟：导航后第 1、2 次 PING 失败，第 3 次成功；只有 PING ack 后才发 BEGIN_INTERCEPT
+    const sendOrder: string[] = [];
+    let pingCount = 0;
+
+    (global as any).chrome.tabs.sendMessage = vi.fn(async (_tabId: number, m: any) => {
+      sendOrder.push(m.kind);
+      if (m.kind === 'PING') {
+        pingCount++;
+        if (pingCount < 3) throw new Error('Receiving end does not exist');
+        return { pong: true };
+      }
+      return undefined;
+    });
+
+    const promise = handleStartScrape({
+      ...basePayload,
+      batchId: 'b_ping',
+      keywords: ['kw1', 'kw2'],
+    });
+    await vi.runAllTimersAsync();
+    await promise;
+
+    // 在 NAVIGATE_KEYWORD 之后、第二次 BEGIN_INTERCEPT 之前应有至少 1 次 PING
+    const navIdx = sendOrder.findIndex((k) => k === 'NAVIGATE_KEYWORD');
+    const beginAfterNav = sendOrder.slice(navIdx + 1).indexOf('BEGIN_INTERCEPT');
+    expect(navIdx).toBeGreaterThanOrEqual(0);
+    expect(beginAfterNav).toBeGreaterThanOrEqual(0);
+    const between = sendOrder.slice(navIdx + 1, navIdx + 1 + beginAfterNav);
+    expect(between).toContain('PING');
+  });
+
+  it('🔴 P0 #1: waits for content-script PING ack BEFORE first BEGIN_INTERCEPT (initial tab create)', async () => {
+    // 模拟新 tab 创建后 content script 还没就绪：第 1、2 次 PING 失败，第 3 次成功
+    const sendOrder: string[] = [];
+    let pingCount = 0;
+
+    (global as any).chrome.tabs.sendMessage = vi.fn(async (_tabId: number, m: any) => {
+      sendOrder.push(m.kind);
+      if (m.kind === 'PING') {
+        pingCount++;
+        if (pingCount < 3) throw new Error('Receiving end does not exist');
+        return { pong: true };
+      }
+      return undefined;
+    });
+
+    const promise = handleStartScrape({ ...basePayload, batchId: 'b_first_ping' });
+    await vi.runAllTimersAsync();
+    await promise;
+
+    // 第一次 BEGIN_INTERCEPT 之前必须有至少一次 PING（证明等了 CS 就绪）
+    const firstBegin = sendOrder.indexOf('BEGIN_INTERCEPT');
+    expect(firstBegin).toBeGreaterThan(0);
+    const beforeFirstBegin = sendOrder.slice(0, firstBegin);
+    expect(beforeFirstBegin).toContain('PING');
+  });
+
+  it('🔴 P0 #1: fails fast when content-script PING never acks after tab create', async () => {
+    // 模拟 PING 永远超时 → 应直接 fail，而不是闷头发 BEGIN_INTERCEPT 又被 reject
+    (global as any).chrome.tabs.sendMessage = vi.fn(async (_tabId: number, m: any) => {
+      if (m.kind === 'PING') throw new Error('Receiving end does not exist');
+      return undefined;
+    });
+
+    const promise = handleStartScrape({ ...basePayload, batchId: 'b_ping_timeout' });
+    await vi.runAllTimersAsync();
+    await promise;
+
+    const statuses = sendMessageMock.mock.calls
+      .map((c) => c[0])
+      .filter((m) => m?.kind === 'SCRAPE_STATUS')
+      .map((m) => m.status);
+    expect(statuses[statuses.length - 1]).toBe('failed');
+  });
+
+  it('🟠 P1.1: emits failed when chrome.tabs.sendMessage rejects mid-flow', async () => {
+    (global as any).chrome.tabs.sendMessage = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('Receiving end does not exist'));
+
+    const promise = handleStartScrape({ ...basePayload, batchId: 'b_err' });
+    await vi.runAllTimersAsync();
+    await promise;
+
+    const statuses = sendMessageMock.mock.calls
+      .map((c) => c[0])
+      .filter((m) => m?.kind === 'SCRAPE_STATUS')
+      .map((m) => m.status);
+
+    expect(statuses[statuses.length - 1]).toBe('failed');
   });
 
   it('persists batch record to chrome.storage.local on complete', async () => {
