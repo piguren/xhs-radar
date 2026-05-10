@@ -8,7 +8,11 @@ export interface ProgressPatch {
 }
 
 export class ProgressEmitter {
-  constructor(private readonly batchId: string) {}
+  private readonly batchId: string;
+
+  constructor(batchId: string) {
+    this.batchId = batchId;
+  }
 
   emit(patch: ProgressPatch): void {
     chrome.runtime.sendMessage({ kind: 'SCRAPE_PROGRESS', batchId: this.batchId, patch });

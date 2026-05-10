@@ -3,8 +3,11 @@ import type { NoteRecord } from '@/types/note';
 export class CandidatePool {
   private items: NoteRecord[] = [];
   private seen = new Set<string>();
+  private readonly max: number;
 
-  constructor(private readonly max: number) {}
+  constructor(max: number) {
+    this.max = max;
+  }
 
   get size(): number {
     return this.items.length;
