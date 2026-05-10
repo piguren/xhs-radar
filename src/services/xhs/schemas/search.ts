@@ -23,9 +23,15 @@ export interface XhsSearchItem {
   note_card?: XhsNoteCard;
 }
 
+export interface XhsCornerTag {
+  text: string;
+  type: 'publish_time' | string;
+}
+
 export interface XhsNoteCard {
   type: 'normal' | 'video';
-  display_title: string;
+  display_title?: string;
+  corner_tag_info?: XhsCornerTag[];
   user: {
     user_id: string;
     nickname?: string;
@@ -38,7 +44,7 @@ export interface XhsNoteCard {
     collected: boolean;
     collected_count: RawCount;
     comment_count: RawCount;
-    share_count: RawCount;
+    shared_count: RawCount;
     followed?: boolean;
   };
   cover?: {

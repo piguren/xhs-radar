@@ -1,0 +1,477 @@
+{
+  "code": 0,
+  "data": {
+    "has_more": true,
+    "items": [
+      {
+        "id": "69fd7bfa0000000022029bcc",
+        "model_type": "note",
+        "note_card": {
+          "corner_tag_info": [
+            { "text": "1天前", "type": "publish_time" }
+          ],
+          "cover": {
+            "height": 1444,
+            "url_default": "http://sns-webpic-qc.xhscdn.com/202605101831/378ae3c30afbd70ae9bce9d33c051df2/notes_pre_post/1040g3k831vt7flqiigdg5qctit9oac55c0lkjkg!nc_n_webp_mw_1",
+            "url_pre": "http://sns-webpic-qc.xhscdn.com/202605101831/69a9ff4c4d24aa7029481b6b39fe2e84/notes_pre_post/1040g3k831vt7flqiigdg5qctit9oac55c0lkjkg!nc_n_webp_prv_1",
+            "width": 1080
+          },
+          "display_title": "已入职影石AI产品岗双休，节奏拉满～",
+          "interact_info": {
+            "collected": false,
+            "collected_count": "338",
+            "comment_count": "168",
+            "liked": false,
+            "liked_count": "451",
+            "shared_count": "89"
+          },
+          "type": "normal",
+          "user": {
+            "avatar": "https://sns-avatar-qc.xhscdn.com/avatar/1040g2jo31tv7r6i46u6g5qctit9oac55vmu5hqo?imageView2/2/w/80/format/jpg",
+            "nick_name": "小葵",
+            "nickname": "小葵",
+            "user_id": "699d975300000000210130a5",
+            "xsec_token": "ABP0DQc2gqzg-kcqHVig1ZTKVv5-p-oajhxhttBPW_8jE="
+          }
+        },
+        "xsec_token": "ABreLrBKE0L0JjtvFUKW7PoaS-yxvwp9MRMgG93vkfyZo="
+      },
+      {
+        "id": "697b385900000000220380f0",
+        "model_type": "note",
+        "note_card": {
+          "corner_tag_info": [{ "text": "01-30", "type": "publish_time" }],
+          "display_title": "智谱AI产品经理业务面面经（已过附答案）",
+          "interact_info": {
+            "collected": true,
+            "collected_count": "1865",
+            "comment_count": "45",
+            "liked": false,
+            "liked_count": "1300",
+            "shared_count": "268"
+          },
+          "type": "normal",
+          "user": {
+            "nick_name": "明天好",
+            "nickname": "明天好",
+            "user_id": "62a6d0e500000000190293a8"
+          }
+        },
+        "xsec_token": "ABXag3BhGdw4ZHvo2RQrqqPeS24c8FZ86BrMugrkVq43U="
+      },
+      {
+        "id": "69fd9a900000000035024b0c",
+        "model_type": "note",
+        "note_card": {
+          "corner_tag_info": [{ "text": "2天前", "type": "publish_time" }],
+          "interact_info": {
+            "collected": false,
+            "collected_count": "93",
+            "comment_count": "75",
+            "liked": false,
+            "liked_count": "91",
+            "shared_count": "54"
+          },
+          "type": "normal",
+          "user": {
+            "nick_name": "Bruce",
+            "nickname": "Bruce",
+            "user_id": "5de4ea4c0000000001007e73"
+          }
+        },
+        "xsec_token": "ABreLrBKE0L0JjtvFUKW7PobNY06EQ86dexx7M-PTRY3U="
+      },
+      {
+        "id": "69f0cd8c000000002301d6c0",
+        "model_type": "note",
+        "note_card": {
+          "corner_tag_info": [{ "text": "04-28", "type": "publish_time" }],
+          "display_title": "码住！设计师&产品经理常用的10个Skills👉",
+          "interact_info": {
+            "collected": false,
+            "collected_count": "315",
+            "comment_count": "16",
+            "liked": false,
+            "liked_count": "254",
+            "shared_count": "30"
+          },
+          "type": "normal",
+          "user": {
+            "nick_name": "Dreamer妍妍",
+            "nickname": "Dreamer妍妍",
+            "user_id": "5b2afdf311be104ac3c22931"
+          }
+        },
+        "xsec_token": "AB8yRssfoU9oFHHyVKpVxkMduqiK6l8RFFytD6asnaU7c="
+      },
+      {
+        "id": "6736f8ab000000001b02fff1",
+        "model_type": "note",
+        "note_card": {
+          "corner_tag_info": [{ "text": "2024-11-15", "type": "publish_time" }],
+          "display_title": "文科生可以干AI/策略产品经理吗？",
+          "interact_info": {
+            "collected": false,
+            "collected_count": "47",
+            "comment_count": "8",
+            "liked": false,
+            "liked_count": "75",
+            "shared_count": "6"
+          },
+          "type": "normal",
+          "user": {
+            "nick_name": "七月Yukii（AI版）",
+            "nickname": "七月Yukii（AI版）",
+            "user_id": "5992769c50c4b470edb48517"
+          }
+        },
+        "xsec_token": "ABfdw7Lt-AILVQhgWtf3Mu5hmZ2EfrtuPfUOsOEuR6Fu4="
+      },
+      {
+        "id": "69e707910000000021006a03",
+        "model_type": "note",
+        "note_card": {
+          "corner_tag_info": [{ "text": "04-21", "type": "publish_time" }],
+          "display_title": "帮男朋友招360招AI产品实习生！",
+          "interact_info": {
+            "collected": false,
+            "collected_count": "7",
+            "comment_count": "0",
+            "liked": false,
+            "liked_count": "10",
+            "shared_count": "11"
+          },
+          "type": "normal",
+          "user": {
+            "nick_name": "诗人姐姐",
+            "nickname": "诗人姐姐",
+            "user_id": "65ef05be000000000500cc5f"
+          }
+        },
+        "xsec_token": "ABLRXSZNa4qYz_-t8xcbqmVjLkE1vzGSiGtgWAYtDZk-g="
+      },
+      {
+        "id": "69df9a3e000000001d01a893",
+        "model_type": "note",
+        "note_card": {
+          "corner_tag_info": [{ "text": "04-16", "type": "publish_time" }],
+          "display_title": "产品经理懂技术如何ai vibe coding",
+          "interact_info": {
+            "collected": false,
+            "collected_count": "98",
+            "comment_count": "8",
+            "liked": false,
+            "liked_count": "75",
+            "shared_count": "10"
+          },
+          "type": "normal",
+          "user": {
+            "nick_name": "瀞鎏Serena",
+            "nickname": "瀞鎏Serena",
+            "user_id": "6050b654000000000100971c"
+          }
+        },
+        "xsec_token": "ABzSw6W5kV0SL9ERwcjQ9aFNDfLC_0ALlp7zvrigS1IMA="
+      },
+      {
+        "id": "6916a9350000000004000dab",
+        "model_type": "note",
+        "note_card": {
+          "corner_tag_info": [{ "text": "2025-11-14", "type": "publish_time" }],
+          "display_title": "22岁法硕炮灰，24岁AI产品，我的野路子复盘",
+          "interact_info": {
+            "collected": false,
+            "collected_count": "23",
+            "comment_count": "2",
+            "liked": false,
+            "liked_count": "52",
+            "shared_count": "4"
+          },
+          "type": "normal",
+          "user": {
+            "nick_name": "书店和酒",
+            "nickname": "书店和酒",
+            "user_id": "64381df3000000001400d835"
+          }
+        },
+        "xsec_token": "AB65yYHsL9LgURT9UZn_ekn8mM1hx6JwVZ8JdaRKSu1Ew="
+      },
+      {
+        "id": "69b2be93000000001d027e7d",
+        "model_type": "note",
+        "note_card": {
+          "corner_tag_info": [{ "text": "03-12", "type": "publish_time" }],
+          "display_title": "Shein产品经理面经，无经验可冲",
+          "interact_info": {
+            "collected": false,
+            "collected_count": "16",
+            "comment_count": "1",
+            "liked": false,
+            "liked_count": "21",
+            "shared_count": "5"
+          },
+          "type": "normal",
+          "user": {
+            "nick_name": "桐熹",
+            "nickname": "桐熹",
+            "user_id": "5f6405880000000001005eed"
+          }
+        },
+        "xsec_token": "ABbrKO-9m3BEVVbStdY1lVL2d5pJwMJiBickF8zw8HKVU="
+      },
+      {
+        "id": "6870d782000000001203f7a2",
+        "model_type": "note",
+        "note_card": {
+          "corner_tag_info": [{ "text": "2025-07-11", "type": "publish_time" }],
+          "interact_info": {
+            "collected": false,
+            "collected_count": "7",
+            "comment_count": "2",
+            "liked": false,
+            "liked_count": "6",
+            "shared_count": "3"
+          },
+          "type": "normal",
+          "user": {
+            "nick_name": "菠萝学姐（钻研大模型版）",
+            "nickname": "菠萝学姐（钻研大模型版）",
+            "user_id": "674b535a000000001c01be4f"
+          }
+        },
+        "xsec_token": "ABEcwXbHdbQqgnAgulYu-bTElyFsEdMTeK50ywEYr18Fo="
+      },
+      {
+        "id": "69bbe74c0000000021007a99",
+        "model_type": "note",
+        "note_card": {
+          "corner_tag_info": [{ "text": "03-19", "type": "publish_time" }],
+          "display_title": "27届现在开始准备转AI产品经理有可能吗",
+          "interact_info": {
+            "collected": false,
+            "collected_count": "123",
+            "comment_count": "55",
+            "liked": false,
+            "liked_count": "144",
+            "shared_count": "23"
+          },
+          "type": "normal",
+          "user": {
+            "nick_name": "爱鹅护鹅搞鹅",
+            "nickname": "爱鹅护鹅搞鹅",
+            "user_id": "5f06c2de000000000101f9a2"
+          }
+        },
+        "xsec_token": "ABshs_o8mlvNU5gaJX2p3bS3L2ZvTEcwxFcg7NrN-UuTs="
+      },
+      {
+        "id": "69b99303000000002800b885",
+        "model_type": "note",
+        "note_card": {
+          "corner_tag_info": [{ "text": "03-18", "type": "publish_time" }],
+          "display_title": "计算机科班做agent开发还是ai产品？",
+          "interact_info": {
+            "collected": false,
+            "collected_count": "96",
+            "comment_count": "73",
+            "liked": false,
+            "liked_count": "122",
+            "shared_count": "6"
+          },
+          "type": "normal",
+          "user": {
+            "nick_name": "不知道bot",
+            "nickname": "不知道bot",
+            "user_id": "5bcf3be16182a700010ab50c"
+          }
+        },
+        "xsec_token": "ABCmqjAvsTDc9N_b72U1Hh763GP0aoZBPDkFYYqqhOlVg="
+      },
+      {
+        "id": "6932be46000000001e02ff49",
+        "model_type": "note",
+        "note_card": {
+          "corner_tag_info": [{ "text": "2025-12-05", "type": "publish_time" }],
+          "display_title": "大厂产品面试应该如何准备？",
+          "interact_info": {
+            "collected": false,
+            "collected_count": "25",
+            "comment_count": "0",
+            "liked": false,
+            "liked_count": "10",
+            "shared_count": "4"
+          },
+          "type": "normal",
+          "user": {
+            "nick_name": "爱吃牛角的猹",
+            "nickname": "爱吃牛角的猹",
+            "user_id": "5bb082fabb1c7400016bf64b"
+          }
+        },
+        "xsec_token": "ABg4gGtUgrexiKMV0gV_wEK86JYW8KzHRpt3bJGtKwPuI="
+      },
+      {
+        "id": "6999263a000000001a02c833",
+        "model_type": "note",
+        "note_card": {
+          "corner_tag_info": [{ "text": "02-21", "type": "publish_time" }],
+          "display_title": "AI产品经理作品集（上）--做在哪做什么",
+          "interact_info": {
+            "collected": false,
+            "collected_count": "121",
+            "comment_count": "5",
+            "liked": false,
+            "liked_count": "92",
+            "shared_count": "13"
+          },
+          "type": "normal",
+          "user": {
+            "nick_name": "GeryVood的AI PM日记",
+            "nickname": "GeryVood的AI PM日记",
+            "user_id": "65fee0ea000000000b00e16f"
+          }
+        },
+        "xsec_token": "AB0IRNHsPbJMcC3oJP_q_eenePuHiS56maYaf2gjbySTo="
+      },
+      {
+        "id": "69d921d0000000001a02ec76",
+        "model_type": "note",
+        "note_card": {
+          "corner_tag_info": [{ "text": "04-11", "type": "publish_time" }],
+          "display_title": "智谱-ai产品面经",
+          "interact_info": {
+            "collected": false,
+            "collected_count": "121",
+            "comment_count": "4",
+            "liked": false,
+            "liked_count": "118",
+            "shared_count": "16"
+          },
+          "type": "normal",
+          "user": {
+            "nick_name": "一颗草莓🍓",
+            "nickname": "一颗草莓🍓",
+            "user_id": "6793b244000000000e02d82c"
+          }
+        },
+        "xsec_token": "ABqTc5hP5MKGzZq0NUp1wazwW6HHyYnl2X8kwtKx6r5_4="
+      },
+      {
+        "id": "69d5019c000000002301cace",
+        "model_type": "note",
+        "note_card": {
+          "corner_tag_info": [{ "text": "04-07", "type": "publish_time" }],
+          "display_title": "0经验勇闯AI产品一个月都做错了什么",
+          "interact_info": {
+            "collected": false,
+            "collected_count": "9",
+            "comment_count": "1",
+            "liked": false,
+            "liked_count": "28",
+            "shared_count": "0"
+          },
+          "type": "normal",
+          "user": {
+            "nick_name": "灰色奶酪",
+            "nickname": "灰色奶酪",
+            "user_id": "5d32cb0c0000000016005832"
+          }
+        },
+        "xsec_token": "ABWPTrSW_JpidwnNo_imYygUIC6D6lpEuNXLRAygzXIPo="
+      },
+      {
+        "id": "6928fd0e000000001e002a3b",
+        "model_type": "note",
+        "note_card": {
+          "corner_tag_info": [{ "text": "2025-11-28", "type": "publish_time" }],
+          "interact_info": {
+            "collected": false,
+            "collected_count": "16",
+            "comment_count": "14",
+            "liked": false,
+            "liked_count": "42",
+            "shared_count": "8"
+          },
+          "type": "normal",
+          "user": {
+            "nick_name": "mia",
+            "nickname": "mia",
+            "user_id": "5655c8a3e00dd8464ff142ad"
+          }
+        },
+        "xsec_token": "AB0xRm6HBxFDBLp3hdJNwjfZ6P9uWGjGSwDVjJj3Nji9Q="
+      },
+      {
+        "id": "69f2e10a0000000035032b81",
+        "model_type": "note",
+        "note_card": {
+          "corner_tag_info": [{ "text": "04-30", "type": "publish_time" }],
+          "display_title": "腾讯云ai产品经理实习招继任",
+          "interact_info": {
+            "collected": false,
+            "collected_count": "14",
+            "comment_count": "9",
+            "liked": false,
+            "liked_count": "18",
+            "shared_count": "5"
+          },
+          "type": "normal",
+          "user": {
+            "nick_name": "六月底",
+            "nickname": "六月底",
+            "user_id": "68b1dd9b0000000019014922"
+          }
+        },
+        "xsec_token": "ABwUoUZ_exsnH40MWWBnf0soaH9e-R6EpMmzmPOdt_6_Y="
+      },
+      {
+        "id": "681cceb0000000002301d9a4",
+        "model_type": "note",
+        "note_card": {
+          "corner_tag_info": [{ "text": "2025-05-08", "type": "publish_time" }],
+          "display_title": "中厂AI视频产品面经（已offer）",
+          "interact_info": {
+            "collected": false,
+            "collected_count": "73",
+            "comment_count": "3",
+            "liked": false,
+            "liked_count": "67",
+            "shared_count": "13"
+          },
+          "type": "normal",
+          "user": {
+            "nick_name": "云宝的产品笔记",
+            "nickname": "云宝的产品笔记",
+            "user_id": "6804be29000000000601c4fa"
+          }
+        },
+        "xsec_token": "AB-z2dtU0MaEGCydMkLpZ0BnndDJqcXe74tD2Jr6Cvtn4="
+      },
+      {
+        "id": "698e2740000000000a02dabf",
+        "model_type": "note",
+        "note_card": {
+          "corner_tag_info": [{ "text": "02-13", "type": "publish_time" }],
+          "display_title": "26会计专业发疯2周转行AI产品经理|day4",
+          "interact_info": {
+            "collected": false,
+            "collected_count": "263",
+            "comment_count": "29",
+            "liked": false,
+            "liked_count": "371",
+            "shared_count": "21"
+          },
+          "type": "normal",
+          "user": {
+            "nick_name": "piguren（闪电战AI版）",
+            "nickname": "piguren（闪电战AI版）",
+            "user_id": "5a510b6e11be10095eb992cc"
+          }
+        },
+        "xsec_token": "ABXJg0KdJbyop4SMJ_ksMXY7QrCBGa5gpO9WNNLbIAWBE="
+      }
+    ]
+  },
+  "msg": "成功",
+  "success": true
+}

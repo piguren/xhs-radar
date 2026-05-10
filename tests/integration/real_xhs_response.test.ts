@@ -60,6 +60,19 @@ describe('T-069: search_parser against real XHS response', () => {
     }
   });
 
+  it('shareCount is parsed from real shared_count field (not always 0)', () => {
+    const result = parseSearchResponse(fixture.data as any);
+    const totalShare = result.reduce((acc, n) => acc + n.interactInfo.shareCount, 0);
+    expect(totalShare).toBeGreaterThan(0);
+  });
+
+  it('publish time is parsed from corner_tag_info (not hard-coded 0)', () => {
+    const result = parseSearchResponse(fixture.data as any);
+    for (const note of result) {
+      expect(note.time).toBeGreaterThan(0);
+    }
+  });
+
   it('every parsed note has user with userId', () => {
     const result = parseSearchResponse(fixture.data as any);
     for (const note of result) {

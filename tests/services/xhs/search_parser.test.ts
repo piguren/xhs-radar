@@ -11,7 +11,7 @@ const mkCard = (overrides: Partial<{ liked: string; collected: string; comment: 
     liked_count: overrides.liked ?? '0',
     collected_count: overrides.collected ?? '0',
     comment_count: overrides.comment ?? '0',
-    share_count: overrides.share ?? '0',
+    shared_count: overrides.share ?? '0',
   },
 });
 
